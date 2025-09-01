@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { supabase, User } from '../lib/supabase';
 import { userService } from '../services/userService';
 import type { Session } from '@supabase/supabase-js';
@@ -19,17 +19,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileError, setProfileError] = useState(false);
+  const fetchingProfile = useRef(false);
+  const currentUserId = useRef<string | null>(null);
 
   useEffect(() => {
     // Get initial session
     const initializeAuth = async () => {
       try {
+        console.log('Initializing auth...');
         const { data: { session } } = await supabase.auth.getSession();
+        console.log('Initial session:', session?.user?.id);
         setSession(session);
         
         if (session?.user) {
           await fetchUserProfile(session.user.id);
         } else {
+          console.log('No session found, setting loading to false');
           setLoading(false);
         }
       } catch (error) {
@@ -47,46 +52,85 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(session);
         
         if (session?.user) {
-          // Reset profile error when we get a new session
-          setProfileError(false);
-          await fetchUserProfile(session.user.id);
+          // Only fetch profile if it's a different user or we don't have a user
+          if (currentUserId.current !== session.user.id || !user) {
+            currentUserId.current = session.user.id;
+            setProfileError(false);
+            await fetchUserProfile(session.user.id);
+          }
         } else {
+          console.log('Session cleared, resetting user state');
           setUser(null);
           setProfileError(false);
           setLoading(false);
+          currentUserId.current = null;
         }
       }
     );
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [user]);
 
   const fetchUserProfile = async (userId: string) => {
+    // Prevent multiple simultaneous fetches
+    if (fetchingProfile.current) {
+      console.log('Profile fetch already in progress, skipping...');
+      return;
+    }
+
+    // Don't fetch if we already have the user data for this ID
+    if (user && currentUserId.current === userId) {
+      console.log('User data already available, skipping fetch...');
+      return;
+    }
+
     try {
+      fetchingProfile.current = true;
       setLoading(true);
       console.log('Fetching user profile for:', userId);
-      const { data, error } = await userService.getOwnProfile(userId);
+      
+      // Reduce timeout to 5 seconds for faster response
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 5000); // 5 second timeout
+      });
+
+      const profilePromise = userService.getOwnProfile(userId);
+      
+      const { data, error } = await Promise.race([profilePromise, timeoutPromise]) as any;
 
       if (error) {
         console.error('Error fetching user profile:', error);
         console.log('User ID that failed:', userId);
         setProfileError(true);
         setUser(null);
-      } else if (data) {
+        setLoading(false);
+        return;
+      }
+
+      if (data) {
         console.log('User profile fetched successfully:', data.full_name, data.role);
         setUser(data);
         setProfileError(false);
+        setLoading(false);
       } else {
         console.log('No user profile found for:', userId);
         setProfileError(true);
         setUser(null);
+        setLoading(false);
       }
     } catch (error) {
       console.error('Error fetching user profile:', error);
-      setProfileError(true);
-      setUser(null);
+      // Don't set profile error on timeout, just set loading to false
+      if (error.message === 'Profile fetch timeout') {
+        console.log('Profile fetch timed out, but continuing...');
+        setLoading(false);
+      } else {
+        setProfileError(true);
+        setUser(null);
+        setLoading(false);
+      }
     } finally {
-      setLoading(false);
+      fetchingProfile.current = false;
     }
   };
 
@@ -123,6 +167,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setSession(null);
       setProfileError(false);
+      currentUserId.current = null;
+      fetchingProfile.current = false;
     } catch (error) {
       console.error('Sign out error:', error);
     } finally {

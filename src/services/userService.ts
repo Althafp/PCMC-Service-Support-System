@@ -12,15 +12,38 @@ export const userService = {
    */
   async getOwnProfile(userId: string): Promise<{ data: User | null; error: any }> {
     try {
+      console.log('Attempting to fetch profile via RPC for user:', userId);
       const { data, error } = await supabase.rpc('get_own_profile', {
         user_id: userId
       });
 
       if (error) {
-        console.error('Error fetching own profile:', error);
-        return { data: null, error };
+        console.error('RPC Error fetching own profile:', error);
+        console.log('Falling back to direct query...');
+        
+        // Fallback to direct query
+        try {
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', userId)
+            .eq('is_active', true)
+            .single();
+
+          if (fallbackError) {
+            console.error('Fallback query also failed:', fallbackError);
+            return { data: null, error: fallbackError };
+          }
+
+          console.log('Fallback query successful:', fallbackData?.full_name);
+          return { data: fallbackData, error: null };
+        } catch (fallbackError) {
+          console.error('Fallback query exception:', fallbackError);
+          return { data: null, error: fallbackError };
+        }
       }
 
+      console.log('RPC query successful:', data?.[0]?.full_name);
       return { data: data?.[0] || null, error: null };
     } catch (error) {
       console.error('Error in getOwnProfile:', error);

@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Print Styles for Unified Report View */
+@media print {
+  /* Hide navigation and buttons when printing */
+  .print\\:hidden {
+    display: none !important;
+  }
+  
+  /* Remove shadows and borders for clean print */
+  .print\\:shadow-none {
+    box-shadow: none !important;
+  }
+  
+  .print\\:border-none {
+    border: none !important;
+  }
+  
+  /* Full width for print */
+  .print\\:max-w-none {
+    max-width: none !important;
+  }
+  
+  /* Adjust spacing for print */
+  .print\\:space-y-4 > * + * {
+    margin-top: 1rem !important;
+  }
+  
+  /* Ensure text is readable */
+  body {
+    font-size: 12pt !important;
+    line-height: 1.4 !important;
+  }
+  
+  /* Page breaks */
+  .page-break {
+    page-break-before: always;
+  }
+  
+  /* Avoid breaking within sections */
+  .no-break {
+    page-break-inside: avoid;
+  }
+}

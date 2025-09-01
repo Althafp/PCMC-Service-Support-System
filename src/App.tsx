@@ -30,6 +30,26 @@ import { TechnicianDashboard } from './pages/technician/TechnicianDashboard';
 import { EnhancedNewReport } from './pages/technician/EnhancedNewReport';
 import { MyReports } from './pages/technician/MyReports';
 import { UnifiedReportView } from './pages/UnifiedReportView';
+import { useAuth } from './contexts/AuthContext';
+
+// Root route component that handles authentication redirects
+function RootRedirect() {
+  const { user, loading, profileError } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (user && !profileError) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <Navigate to="/login" replace />;
+}
 
 function App() {
   return (
@@ -37,6 +57,7 @@ function App() {
       <NotificationProvider>
         <Router>
           <Routes>
+            <Route path="/" element={<RootRedirect />} />
             <Route path="/login" element={<Login />} />
             <Route path="/dashboard" element={
               <ProtectedRoute>
@@ -103,7 +124,7 @@ function App() {
                 </Layout>
               </ProtectedRoute>
             } />
-            <Route path="/manager/teams" element={
+            <Route path="/manager/team" element={
               <ProtectedRoute allowedRoles={['manager']}>
                 <Layout>
                   <HierarchicalTeamManagement />
@@ -220,7 +241,8 @@ function App() {
               </ProtectedRoute>
             } />
 
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            {/* Catch all route - redirect to root */}
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Router>
       </NotificationProvider>

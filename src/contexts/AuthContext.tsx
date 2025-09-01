@@ -22,24 +22,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session?.user) {
-        fetchUserProfile(session.user.id);
-      } else {
+    const initializeAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        setSession(session);
+        
+        if (session?.user) {
+          await fetchUserProfile(session.user.id);
+        } else {
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('Error initializing auth:', error);
         setLoading(false);
       }
-    });
+    };
+
+    initializeAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.id);
         setSession(session);
+        
         if (session?.user) {
-          // Only fetch profile if we don't already have a profile error
-          if (!profileError) {
-            fetchUserProfile(session.user.id);
-          }
+          // Reset profile error when we get a new session
+          setProfileError(false);
+          await fetchUserProfile(session.user.id);
         } else {
           setUser(null);
           setProfileError(false);
@@ -49,17 +59,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
 
     return () => subscription.unsubscribe();
-  }, [profileError]);
+  }, []);
 
   const fetchUserProfile = async (userId: string) => {
     try {
+      setLoading(true);
       console.log('Fetching user profile for:', userId);
       const { data, error } = await userService.getOwnProfile(userId);
 
       if (error) {
         console.error('Error fetching user profile:', error);
         console.log('User ID that failed:', userId);
-        // Set profile error flag instead of signing out immediately
         setProfileError(true);
         setUser(null);
       } else if (data) {
@@ -82,22 +92,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     console.log('Attempting to sign in with:', email);
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    setLoading(true);
     
-    if (error) {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (error) {
+        console.error('Sign in error:', error);
+        setLoading(false);
+        return { error };
+      } else {
+        console.log('Sign in successful:', data.user?.id);
+        // The onAuthStateChange will handle the profile fetching
+        return { error: null };
+      }
+    } catch (error) {
       console.error('Sign in error:', error);
-    } else {
-      console.log('Sign in successful:', data.user?.id);
+      setLoading(false);
+      return { error };
     }
-    
-    return { error };
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    setLoading(true);
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+      setSession(null);
+      setProfileError(false);
+    } catch (error) {
+      console.error('Sign out error:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const value = {

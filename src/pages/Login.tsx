@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, Shield } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export function Login() {
-  const { session, signIn, profileError, signOut } = useAuth();
+  const { session, user, signIn, profileError, signOut, loading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loginLoading, setLoginLoading] = useState(false);
   const [error, setError] = useState('');
   const [showSignUp, setShowSignUp] = useState(false);
   const [signUpLoading, setSignUpLoading] = useState(false);
@@ -23,19 +24,27 @@ export function Login() {
     zone: '',
   });
 
-  const hasNavigated = useRef(false);
-
+  // Handle authentication state changes
   useEffect(() => {
-    if (session && !profileError && !hasNavigated.current) {
-      hasNavigated.current = true;
+    // If we have a user and no profile error, redirect to dashboard
+    if (user && !profileError && !loading) {
       navigate('/dashboard', { replace: true });
     }
-  }, [session, profileError]);
+  }, [user, profileError, loading, navigate]);
 
-  useEffect(() => {
-    hasNavigated.current = false;
-  }, [session, profileError]);
+  // Show loading while authentication is being checked
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
 
+  // Show profile error if user exists but profile is missing
   if (profileError && session) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
@@ -66,7 +75,8 @@ export function Login() {
     );
   }
 
-  if (session && !profileError) {
+  // If user is authenticated and has profile, redirect to dashboard
+  if (user && !profileError) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
         <div className="text-center">
@@ -79,7 +89,7 @@ export function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setLoginLoading(true);
     setError('');
 
     const { error } = await signIn(email, password);
@@ -88,7 +98,7 @@ export function Login() {
       setError('Invalid email or password');
     }
     
-    setLoading(false);
+    setLoginLoading(false);
   };
 
   const handleSignUpSubmit = async (e: React.FormEvent) => {
@@ -108,7 +118,7 @@ export function Login() {
         zone: '',
       });
     } catch (error) {
-      alert('Error submitting request. Please try again.');
+      console.error('Sign up error:', error);
     } finally {
       setSignUpLoading(false);
     }
@@ -116,56 +126,56 @@ export function Login() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="max-w-md w-full space-y-8">
+      <div className="max-w-md w-full">
         <div className="bg-white rounded-2xl shadow-xl p-8">
-          <div className="text-center">
+          <div className="text-center mb-8">
             <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4">
               <Shield className="w-8 h-8 text-blue-600" />
             </div>
-            <h2 className="text-3xl font-bold text-gray-900">Welcome Back</h2>
-            <p className="mt-2 text-gray-600">PCMC Service Support System</p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome Back</h2>
+            <p className="text-gray-600">Sign in to your account</p>
           </div>
 
-          <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm">
-                {error}
-              </div>
-            )}
+          {error && (
+            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+              {error}
+            </div>
+          )}
 
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
                 Email Address
               </label>
               <input
                 id="email"
                 type="email"
-                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Enter your email"
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
                 Password
               </label>
-              <div className="mt-1 relative">
+              <div className="relative">
                 <input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
-                  required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  required
+                  className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Enter your password"
                 />
                 <button
                   type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
                   onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
                 >
                   {showPassword ? (
                     <EyeOff className="h-5 w-5 text-gray-400" />
@@ -178,128 +188,134 @@ export function Login() {
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              disabled={loginLoading}
+              className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loginLoading ? 'Signing in...' : 'Sign In'}
             </button>
           </form>
 
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">New to the system?</span>
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <button
-                type="button"
-                onClick={() => setShowSignUp(true)}
-                className="w-full flex justify-center py-3 px-4 border border-blue-600 rounded-lg shadow-sm text-sm font-medium text-blue-600 bg-white hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
-              >
-                Request Account Access
-              </button>
-            </div>
-          </div>
-
           <div className="mt-6 text-center">
-            <p className="text-sm text-gray-500">
-              Need help? Contact your system administrator
-            </p>
+            <button
+              onClick={() => setShowSignUp(true)}
+              className="text-blue-600 hover:text-blue-800 text-sm"
+            >
+              Don't have an account? Request access
+            </button>
           </div>
         </div>
 
+        {/* Sign Up Modal */}
         {showSignUp && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full">
+            <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full max-h-[90vh] overflow-y-auto">
               <div className="text-center mb-6">
-                <h3 className="text-2xl font-bold text-gray-900">Request Access</h3>
-                <p className="text-gray-600 mt-2">Submit your details for admin approval</p>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">Request Access</h3>
+                <p className="text-gray-600">Fill out the form below to request account access</p>
               </div>
 
               <form onSubmit={handleSignUpSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Full Name *</label>
+                  <label htmlFor="signup-full-name" className="block text-sm font-medium text-gray-700 mb-1">
+                    Full Name
+                  </label>
                   <input
+                    id="signup-full-name"
                     type="text"
-                    required
                     value={signUpData.full_name}
                     onChange={(e) => setSignUpData({...signUpData, full_name: e.target.value})}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Enter your full name"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Email Address *</label>
+                  <label htmlFor="signup-email" className="block text-sm font-medium text-gray-700 mb-1">
+                    Email Address
+                  </label>
                   <input
+                    id="signup-email"
                     type="email"
-                    required
                     value={signUpData.email}
                     onChange={(e) => setSignUpData({...signUpData, email: e.target.value})}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Enter your email"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Employee ID *</label>
+                  <label htmlFor="signup-employee-id" className="block text-sm font-medium text-gray-700 mb-1">
+                    Employee ID
+                  </label>
                   <input
+                    id="signup-employee-id"
                     type="text"
-                    required
                     value={signUpData.employee_id}
                     onChange={(e) => setSignUpData({...signUpData, employee_id: e.target.value})}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Enter your employee ID"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Mobile Number *</label>
+                  <label htmlFor="signup-mobile" className="block text-sm font-medium text-gray-700 mb-1">
+                    Mobile Number
+                  </label>
                   <input
+                    id="signup-mobile"
                     type="tel"
-                    required
                     value={signUpData.mobile}
                     onChange={(e) => setSignUpData({...signUpData, mobile: e.target.value})}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Enter your mobile number"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Designation *</label>
+                  <label htmlFor="signup-designation" className="block text-sm font-medium text-gray-700 mb-1">
+                    Designation
+                  </label>
                   <input
+                    id="signup-designation"
                     type="text"
-                    required
                     value={signUpData.designation}
                     onChange={(e) => setSignUpData({...signUpData, designation: e.target.value})}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Enter your designation"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Department</label>
+                  <label htmlFor="signup-department" className="block text-sm font-medium text-gray-700 mb-1">
+                    Department
+                  </label>
                   <input
+                    id="signup-department"
                     type="text"
                     value={signUpData.department}
                     onChange={(e) => setSignUpData({...signUpData, department: e.target.value})}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Enter your department"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Zone</label>
+                  <label htmlFor="signup-zone" className="block text-sm font-medium text-gray-700 mb-1">
+                    Zone
+                  </label>
                   <input
+                    id="signup-zone"
                     type="text"
                     value={signUpData.zone}
                     onChange={(e) => setSignUpData({...signUpData, zone: e.target.value})}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Enter your zone"
                   />
                 </div>
@@ -308,14 +324,14 @@ export function Login() {
                   <button
                     type="button"
                     onClick={() => setShowSignUp(false)}
-                    className="flex-1 py-2 px-4 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                    className="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-400 transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={signUpLoading}
-                    className="flex-1 py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {signUpLoading ? 'Submitting...' : 'Submit Request'}
                   </button>

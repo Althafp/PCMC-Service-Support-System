@@ -108,6 +108,7 @@ export function ManagerDashboard() {
   };
 
   const handleTeamManagement = () => {
+    console.log('Navigating to team management...');
     navigate('/manager/team');
   };
 

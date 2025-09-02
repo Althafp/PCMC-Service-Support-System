@@ -24,7 +24,7 @@ const navigationItems = {
   ],
   manager: [
     { name: 'Dashboard', href: '/manager', icon: Home },
-    { name: 'Team Management', href: '/manager/teams', icon: Users },
+    { name: 'Team Management', href: '/manager/team', icon: Users },
     { name: 'Reports Overview', href: '/manager/reports', icon: FileText },
     { name: 'Location Management', href: '/manager/locations', icon: MapPin },
     { name: 'Analytics', href: '/manager/analytics', icon: BarChart3 },

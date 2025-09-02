@@ -108,7 +108,7 @@ export function ManagerDashboard() {
   };
 
   const handleTeamManagement = () => {
-    navigate('/manager/teams');
+    navigate('/manager/team');
   };
 
   const handleReportsOverview = () => {

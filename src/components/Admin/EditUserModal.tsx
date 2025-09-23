@@ -95,6 +95,27 @@ export function EditUserModal({ isOpen, onClose, onSuccess, user }: EditUserModa
     setError('');
 
     try {
+      // Auto-populate manager_id for technicians based on their team leader's manager
+      let finalManagerId = formData.manager_id;
+      if ((formData.role === 'technician' || formData.role === 'technical_executive') && formData.team_leader_id) {
+        const { data: teamLeaderData, error: tlError } = await supabase
+          .from('users')
+          .select('manager_id')
+          .eq('id', formData.team_leader_id)
+          .single();
+
+        if (tlError) {
+          throw new Error('Invalid Team Leader selected');
+        }
+
+        if (!teamLeaderData.manager_id) {
+          throw new Error('The selected Team Leader must have a Manager assigned. Please assign a Manager to the Team Leader first.');
+        }
+        
+        // Auto-assign the team leader's manager to the technician
+        finalManagerId = teamLeaderData.manager_id;
+      }
+
       // Update user profile
       const { error: updateError } = await supabase
         .from('users')
@@ -110,7 +131,7 @@ export function EditUserModal({ isOpen, onClose, onSuccess, user }: EditUserModa
           username: formData.username,
           date_of_birth: formData.date_of_birth,
           team_leader_id: formData.team_leader_id || null,
-          manager_id: formData.manager_id || null,
+          manager_id: finalManagerId || null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', user.id);

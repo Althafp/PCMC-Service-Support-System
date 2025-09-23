@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, MapPin, Search, Edit, Trash2, Filter, Eye, X } from 'lucide-react';
+import { Plus, MapPin, Search, Edit, Trash2, Filter, Eye, X, Download, Upload, FileSpreadsheet } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -32,6 +32,13 @@ export function LocationManagement() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterZone, setFilterZone] = useState('');
   const [filterType, setFilterType] = useState('');
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importResults, setImportResults] = useState<{
+    success: number;
+    errors: string[];
+  } | null>(null);
 
   const [formData, setFormData] = useState({
     project_phase: '',
@@ -227,6 +234,186 @@ export function LocationManagement() {
     resetForm();
   };
 
+  const closeImportModal = () => {
+    setShowImportModal(false);
+    setImportFile(null);
+    setImportResults(null);
+  };
+
+  const exportToExcel = async () => {
+    try {
+      // Create Excel headers
+      const headers = [
+        'Project Phase',
+        'Location Type',
+        'RFP No',
+        'Zone',
+        'Location',
+        'Ward No',
+        'PS Limits',
+        'No of Pole',
+        'Pole ID',
+        'JB SL No',
+        'No of Cameras',
+        'Fix Box',
+        'PTZ',
+        'Latitude',
+        'Longitude'
+      ];
+
+      // Create Excel rows
+      const excelRows = filteredLocations.map(location => [
+        location.project_phase || '',
+        location.location_type || '',
+        location.rfp_no || '',
+        location.zone || '',
+        location.location || '',
+        location.ward_no || '',
+        location.ps_limits || '',
+        location.no_of_pole || 0,
+        location.pole_id || '',
+        location.jb_sl_no || '',
+        location.no_of_cameras || 0,
+        location.fix_box || 0,
+        location.ptz || 0,
+        location.latitude || '',
+        location.longitude || ''
+      ]);
+
+      // Create Excel workbook using SheetJS
+      const XLSX = await import('xlsx');
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...excelRows]);
+
+      // Add worksheet to workbook
+      XLSX.utils.book_append_sheet(wb, ws, 'Locations');
+
+      // Generate Excel file and download
+      XLSX.writeFile(wb, `locations_export_${new Date().toISOString().split('T')[0]}.xlsx`);
+
+      alert(`Exported ${filteredLocations.length} locations successfully!`);
+    } catch (error) {
+      console.error('Error exporting locations:', error);
+      alert('Error exporting locations. Please try again.');
+    }
+  };
+
+  const parseExcel = async (file: File): Promise<any[]> => {
+    const XLSX = await import('xlsx');
+    const data = await file.arrayBuffer();
+    const workbook = XLSX.read(data);
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+    
+    if (jsonData.length < 2) return [];
+    
+    const headers = jsonData[0] as string[];
+    const rows = [];
+    
+    for (let i = 1; i < jsonData.length; i++) {
+      const row = jsonData[i] as any[];
+      if (row && row.some(cell => cell !== undefined && cell !== '')) {
+        const rowData: any = {};
+        headers.forEach((header, index) => {
+          if (header) {
+            rowData[header.toLowerCase().replace(/\s+/g, '_')] = row[index] || '';
+          }
+        });
+        rows.push(rowData);
+      }
+    }
+    return rows;
+  };
+
+  const handleImport = async () => {
+    if (!importFile || !user) return;
+
+    setImportLoading(true);
+    setImportResults(null);
+
+    try {
+      const rows = await parseExcel(importFile);
+      
+      const errors: string[] = [];
+      let successCount = 0;
+
+      // Process each row
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const rowNumber = i + 2; // +2 because CSV starts from row 2 (after header)
+
+        try {
+          // Validate required fields
+          if (!row.project_phase || !row.location || !row.zone) {
+            errors.push(`Row ${rowNumber}: Missing required fields (Project Phase, Location, Zone)`);
+            continue;
+          }
+
+          // Prepare location data
+          const locationData = {
+            project_phase: row.project_phase,
+            location_type: row.location_type || '',
+            rfp_no: row.rfp_no || '',
+            zone: row.zone,
+            location: row.location,
+            ward_no: row.ward_no || '',
+            ps_limits: row.ps_limits || '',
+            no_of_pole: parseInt(row.no_of_pole) || 0,
+            pole_id: row.pole_id || '',
+            jb_sl_no: row.jb_sl_no || '',
+            no_of_cameras: parseInt(row.no_of_cameras) || 0,
+            fix_box: parseInt(row.fix_box) || 0,
+            ptz: parseInt(row.ptz) || 0,
+            latitude: row.latitude ? parseFloat(row.latitude) : null,
+            longitude: row.longitude ? parseFloat(row.longitude) : null,
+          };
+
+          // Insert location
+          const { error } = await supabase
+            .from('location_details')
+            .insert([locationData]);
+
+          if (error) {
+            errors.push(`Row ${rowNumber}: ${error.message}`);
+            continue;
+          }
+
+          // Create audit log
+          await supabase.from('audit_logs').insert({
+            user_id: user.id,
+            action: 'CREATE',
+            table_name: 'location_details',
+            record_id: 'bulk_import',
+            new_data: locationData,
+          });
+
+          successCount++;
+        } catch (error: any) {
+          errors.push(`Row ${rowNumber}: ${error.message}`);
+        }
+      }
+
+      setImportResults({
+        success: successCount,
+        errors: errors
+      });
+
+      if (successCount > 0) {
+        fetchLocations(); // Refresh the locations list
+      }
+
+    } catch (error) {
+      console.error('Error importing locations:', error);
+      setImportResults({
+        success: 0,
+        errors: ['Failed to process the file. Please check the file format and ensure it\'s a valid Excel file.']
+      });
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
   const filteredLocations = locations.filter(location => {
     const matchesSearch = location.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          location.rfp_no.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -252,13 +439,29 @@ export function LocationManagement() {
           <h1 className="text-2xl font-bold text-gray-900">Location Management</h1>
           <p className="text-gray-600">Manage all project locations and infrastructure details</p>
         </div>
-        <button
-          onClick={openAddModal}
-          className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          Add Location
-        </button>
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={exportToExcel}
+            className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+          >
+            <Download className="w-5 h-5 mr-2" />
+            Export Excel
+          </button>
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="flex items-center px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
+          >
+            <Upload className="w-5 h-5 mr-2" />
+            Import Excel
+          </button>
+          <button
+            onClick={openAddModal}
+            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Add Location
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -668,6 +871,139 @@ export function LocationManagement() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-orange-100 rounded-lg">
+                  <FileSpreadsheet className="w-5 h-5 text-orange-600" />
+                </div>
+                <h2 className="text-xl font-semibold text-gray-900">Bulk Import Locations (Excel)</h2>
+              </div>
+              <button
+                onClick={closeImportModal}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              {!importResults ? (
+                <>
+                  {/* Instructions */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                    <h3 className="font-medium text-blue-900 mb-2">Import Instructions</h3>
+                    <ul className="text-sm text-blue-700 space-y-1">
+                      <li>• Download the Excel template using the Export button first</li>
+                      <li>• Fill in the location details in the Excel file</li>
+                      <li>• Required fields: Project Phase, Location, Zone</li>
+                      <li>• Numeric fields: No of Pole, No of Cameras, Fix Box, PTZ, Latitude, Longitude</li>
+                      <li>• Upload the completed Excel file below (.xlsx format)</li>
+                    </ul>
+                  </div>
+
+                  {/* File Upload */}
+                  <div className="mb-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Select Excel File
+                    </label>
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                      <input
+                        type="file"
+                        accept=".xlsx,.xls"
+                        onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                        className="hidden"
+                        id="excel-upload"
+                      />
+                      <label
+                        htmlFor="excel-upload"
+                        className="cursor-pointer flex flex-col items-center"
+                      >
+                        <Upload className="w-8 h-8 text-gray-400 mb-2" />
+                        <span className="text-sm text-gray-600">
+                          {importFile ? importFile.name : 'Click to select Excel file'}
+                        </span>
+                        <span className="text-xs text-gray-500 mt-1">
+                          Only Excel files (.xlsx, .xls) are supported
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex justify-end space-x-3">
+                    <button
+                      onClick={closeImportModal}
+                      className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleImport}
+                      disabled={!importFile || importLoading}
+                      className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                    >
+                      <Upload className="w-4 h-4" />
+                      <span>{importLoading ? 'Importing...' : 'Import Locations'}</span>
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Results */}
+                  <div className="text-center py-8">
+                    <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4 ${
+                      importResults.success > 0 ? 'bg-green-100' : 'bg-red-100'
+                    }`}>
+                      {importResults.success > 0 ? (
+                        <svg className="w-8 h-8 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                      ) : (
+                        <svg className="w-8 h-8 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </div>
+                    <h3 className={`text-lg font-medium mb-2 ${
+                      importResults.success > 0 ? 'text-green-900' : 'text-red-900'
+                    }`}>
+                      Import {importResults.success > 0 ? 'Successful' : 'Failed'}
+                    </h3>
+                    <p className="text-gray-600 mb-4">
+                      {importResults.success} locations imported successfully
+                    </p>
+
+                    {importResults.errors.length > 0 && (
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                        <h4 className="font-medium text-red-900 mb-2">Errors:</h4>
+                        <div className="text-sm text-red-700 max-h-32 overflow-y-auto">
+                          {importResults.errors.map((error, index) => (
+                            <div key={index} className="mb-1">• {error}</div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={closeImportModal}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}

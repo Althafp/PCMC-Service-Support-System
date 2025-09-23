@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Mail, Phone, Building, MapPin, Calendar, Save, Camera } from 'lucide-react';
+import { X, User, Mail, Phone, Building, MapPin, Calendar, Save, Camera, Key } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, User as UserType } from '../../lib/supabase';
+import { ChangePasswordModal } from './ChangePasswordModal';
 
 interface UserProfileModalProps {
   isOpen: boolean;
@@ -11,6 +12,7 @@ interface UserProfileModalProps {
 export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
   const { user, session } = useAuth();
   const [loading, setSaving] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const [formData, setFormData] = useState({
     full_name: '',
     email: '',
@@ -243,25 +245,45 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex justify-end space-x-4 pt-4 border-t border-gray-200">
+          <div className="flex justify-between items-center pt-4 border-t border-gray-200">
             <button
               type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              onClick={() => setShowChangePassword(true)}
+              className="px-4 py-2 text-orange-600 bg-orange-50 hover:bg-orange-100 rounded-lg transition-colors flex items-center space-x-2"
             >
-              Cancel
+              <Key className="w-4 h-4" />
+              <span>Change Password</span>
             </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
-            >
-              <Save className="w-4 h-4" />
-              <span>{loading ? 'Saving...' : 'Save Changes'}</span>
-            </button>
+            <div className="flex space-x-4">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+              >
+                <Save className="w-4 h-4" />
+                <span>{loading ? 'Saving...' : 'Save Changes'}</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+        onSuccess={() => {
+          setShowChangePassword(false);
+          // Optionally show a success message or refresh user data
+        }}
+      />
     </div>
   );
 }

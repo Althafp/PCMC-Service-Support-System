@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Pen, RotateCcw, Save, User, Phone, Mail } from 'lucide-react';
+import { RotateCcw, Save, User, Phone } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface TechnicianSignatureProps {
@@ -148,6 +148,9 @@ export function TechnicianSignature({ data, onUpdate }: TechnicianSignatureProps
       {/* Technician Information */}
       <div className="bg-gray-50 rounded-lg p-4">
         <h3 className="text-lg font-medium text-gray-900 mb-3">Technician Details</h3>
+        <p className="text-sm text-gray-600 mb-4">
+          Your name and mobile number are automatically populated from your profile and cannot be edited.
+        </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -158,9 +161,9 @@ export function TechnicianSignature({ data, onUpdate }: TechnicianSignatureProps
               <input
                 type="text"
                 value={data.tech_engineer || user?.full_name || ''}
-                onChange={(e) => onUpdate({ tech_engineer: e.target.value })}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Enter technician name"
+                disabled
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-700 cursor-not-allowed"
+                placeholder="Technician name"
                 required
               />
             </div>
@@ -175,9 +178,9 @@ export function TechnicianSignature({ data, onUpdate }: TechnicianSignatureProps
               <input
                 type="tel"
                 value={data.tech_mobile || user?.mobile || ''}
-                onChange={(e) => onUpdate({ tech_mobile: e.target.value })}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Enter mobile number"
+                disabled
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-700 cursor-not-allowed"
+                placeholder="Mobile number"
                 pattern="[0-9]{10}"
                 required
               />

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Edit, Trash2, UserCheck, UserX, Filter } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, UserCheck, UserX, Filter, Key } from 'lucide-react';
 import { supabase, User, UserRole } from '../../lib/supabase';
 import { AddUserModal } from '../../components/Admin/AddUserModal';
 import { EditUserModal } from '../../components/Admin/EditUserModal';
+import { PasswordResetModal } from '../../components/Admin/PasswordResetModal';
 
 export function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
@@ -11,6 +12,7 @@ export function UserManagement() {
   const [roleFilter, setRoleFilter] = useState<UserRole | 'all'>('all');
   const [showAddUser, setShowAddUser] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [passwordResetUser, setPasswordResetUser] = useState<User | null>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -227,6 +229,13 @@ export function UserManagement() {
                         <Edit className="w-4 h-4" />
                       </button>
                       <button
+                        onClick={() => setPasswordResetUser(user)}
+                        className="text-orange-600 hover:text-orange-900 p-1 rounded hover:bg-orange-50"
+                        title="Reset Password"
+                      >
+                        <Key className="w-4 h-4" />
+                      </button>
+                      <button
                         onClick={() => toggleUserStatus(user.id, user.is_active)}
                         className={`p-1 rounded ${
                           user.is_active 
@@ -272,6 +281,14 @@ export function UserManagement() {
         onClose={() => setEditingUser(null)}
         onSuccess={() => fetchUsers()}
         user={editingUser}
+      />
+
+      {/* Password Reset Modal */}
+      <PasswordResetModal
+        isOpen={!!passwordResetUser}
+        onClose={() => setPasswordResetUser(null)}
+        onSuccess={() => fetchUsers()}
+        user={passwordResetUser}
       />
     </div>
   );

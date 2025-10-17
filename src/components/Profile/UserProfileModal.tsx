@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, User, Mail, Phone, Building, MapPin, Calendar, Save, Camera, Key } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, User, Mail, Phone, Building, MapPin, Calendar, Save, Camera, Key, Pen, Trash2, Check } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase, User as UserType } from '../../lib/supabase';
 import { ChangePasswordModal } from './ChangePasswordModal';
@@ -22,6 +22,12 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
     zone: '',
     date_of_birth: '',
   });
+  
+  // Signature states
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasSignature, setHasSignature] = useState(false);
+  const [signatureData, setSignatureData] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -34,8 +40,182 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
         zone: user.zone || '',
         date_of_birth: user.date_of_birth || '',
       });
+      
+      // Fetch signature directly from database (in case it's not in user object)
+      const fetchSignature = async () => {
+        console.log('🔍 Fetching signature from database for user:', user.id);
+        const { data, error } = await supabase
+          .from('users')
+          .select('signature')
+          .eq('id', user.id)
+          .single();
+        
+        if (error) {
+          console.error('❌ Error fetching signature:', error);
+          return;
+        }
+        
+        console.log('📊 Database query result:', data);
+        const userSignature = data?.signature || (user as any).signature;
+        
+        if (userSignature) {
+          console.log('✅ Signature found! Length:', userSignature.length);
+          console.log('Signature preview:', userSignature.substring(0, 50) + '...');
+          setSignatureData(userSignature);
+          setHasSignature(true);
+          
+          // Wait for canvas to be mounted and ready
+          setTimeout(() => {
+            loadSignatureToCanvas(userSignature);
+          }, 200);
+        } else {
+          console.log('ℹ️ No signature found in database');
+        }
+      };
+      
+      fetchSignature();
     }
   }, [user]);
+
+  // Load signature to canvas
+  const loadSignatureToCanvas = (signature: string) => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      console.log('❌ Canvas ref not available');
+      return;
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      console.log('❌ Canvas context not available');
+      return;
+    }
+
+    console.log('📝 Loading signature to canvas...');
+    console.log('Canvas dimensions:', canvas.width, 'x', canvas.height);
+    console.log('Signature data preview:', signature?.substring(0, 50) + '...');
+
+    const img = new Image();
+    img.onload = () => {
+      console.log('✅ Image loaded, dimensions:', img.width, 'x', img.height);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Scale image to fit canvas while maintaining aspect ratio
+      const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+      const x = (canvas.width - img.width * scale) / 2;
+      const y = (canvas.height - img.height * scale) / 2;
+      
+      console.log('Drawing at:', x, y, 'scale:', scale);
+      ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+      console.log('✅ Signature drawn to canvas successfully');
+      setHasSignature(true);
+    };
+    img.onerror = (error) => {
+      console.error('❌ Error loading signature image:', error);
+      console.log('Signature format:', signature?.substring(0, 100));
+    };
+    
+    // Set image source
+    img.src = signature;
+  };
+
+  // Canvas drawing functions
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    setIsDrawing(true);
+    ctx.beginPath();
+    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => {
+    setIsDrawing(false);
+    if (canvasRef.current) {
+      const signatureDataUrl = canvasRef.current.toDataURL('image/png');
+      setSignatureData(signatureDataUrl);
+      setHasSignature(true);
+    }
+  };
+
+  const clearSignature = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setHasSignature(false);
+    setSignatureData(null);
+  };
+
+  // Touch events for mobile
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const touch = e.touches[0];
+    setIsDrawing(true);
+    ctx.beginPath();
+    ctx.moveTo(touch.clientX - rect.left, touch.clientY - rect.top);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (!isDrawing) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const touch = e.touches[0];
+    ctx.lineTo(touch.clientX - rect.left, touch.clientY - rect.top);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  };
+
+  const handleTouchEnd = () => {
+    setIsDrawing(false);
+    if (canvasRef.current) {
+      const signatureDataUrl = canvasRef.current.toDataURL('image/png');
+      setSignatureData(signatureDataUrl);
+      setHasSignature(true);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,7 +223,7 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
 
     setSaving(true);
     try {
-      // Update user profile
+      // Update user profile including signature
       const { error: profileError } = await supabase
         .from('users')
         .update({
@@ -53,6 +233,7 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
           department: formData.department,
           zone: formData.zone,
           date_of_birth: formData.date_of_birth || null,
+          signature: signatureData,
           updated_at: new Date().toISOString(),
         })
         .eq('id', user.id);
@@ -241,6 +422,63 @@ export function UserProfileModal({ isOpen, onClose }: UserProfileModalProps) {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 placeholder="Enter your zone"
               />
+            </div>
+          </div>
+
+          {/* Signature Section */}
+          <div className="border-t border-gray-200 pt-6">
+            <div className="flex items-center justify-between mb-4">
+              <label className="block text-sm font-medium text-gray-700">
+                <Pen className="w-4 h-4 inline mr-2" />
+                Digital Signature
+              </label>
+              {hasSignature && (
+                <span className="flex items-center text-green-600 text-sm font-medium">
+                  <Check className="w-4 h-4 mr-1" />
+                  Signature saved
+                </span>
+              )}
+            </div>
+            
+            <div className="bg-gray-50 border-2 border-gray-300 rounded-lg p-4">
+              <canvas
+                ref={canvasRef}
+                width={600}
+                height={200}
+                onMouseDown={startDrawing}
+                onMouseMove={draw}
+                onMouseUp={stopDrawing}
+                onMouseLeave={stopDrawing}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                className="w-full border border-gray-300 rounded bg-white cursor-crosshair touch-none"
+                style={{ touchAction: 'none' }}
+              />
+              
+              <div className="flex justify-between items-center mt-4">
+                <button
+                  type="button"
+                  onClick={clearSignature}
+                  className="flex items-center px-3 py-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Clear Signature
+                </button>
+                
+                <p className="text-sm text-gray-600">
+                  {hasSignature ? 
+                    '✓ Signature will be saved with profile' : 
+                    'Draw your signature using mouse or touch'
+                  }
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3 bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-sm text-blue-700">
+                ℹ️ Your signature will be automatically used in service reports. You can change it anytime by drawing a new one.
+              </p>
             </div>
           </div>
 

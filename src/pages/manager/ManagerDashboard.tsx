@@ -1,21 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Users, 
   FileText, 
   MapPin, 
-  BarChart3, 
-  TrendingUp, 
-  AlertCircle,
+  BarChart3,
   CheckCircle,
   XCircle,
   Clock,
-  UserCheck,
-  UserX
+  UserCheck
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { userService } from '../../services/userService';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDepartment } from '../../contexts/DepartmentContext';
 
 interface TeamMember {
   id: string;
@@ -36,6 +33,7 @@ interface Report {
 export function ManagerDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { selectedDepartment } = useDepartment();
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
   const [stats, setStats] = useState({
@@ -48,44 +46,77 @@ export function ManagerDashboard() {
   });
 
   useEffect(() => {
-    if (user) {
+    if (user && selectedDepartment) {
       fetchDashboardData();
     }
-  }, [user]);
+  }, [user, selectedDepartment]);
 
     const fetchDashboardData = async () => {
-    if (!user) return;
+    if (!user || !selectedDepartment) return;
 
     try {
-      console.log('Fetching dashboard data for manager:', user.id, user.full_name);
+      console.log('=== FETCHING DASHBOARD DATA ===');
+      console.log('Manager ID:', user.id);
+      console.log('Selected Department ID:', selectedDepartment.id);
+      console.log('Selected Department Name:', selectedDepartment.name);
       
-      // Use the new service to get team members
-      const { data: teamMembersData, error: teamError } = await userService.getManagerTeam(user.id);
+      // Debug: Check ALL users in selected department
+      const { data: allMembers } = await supabase
+        .from('users')
+        .select('id, full_name, employee_id, department_id, department, role')
+        .eq('department_id', selectedDepartment.id)
+        .in('role', ['technician', 'team_leader']);
+      
+      console.log('ALL users in selected department:', allMembers?.length || 0, allMembers);
+      
+      // Get team members (technicians + team leaders) in selected department only
+      const { data: teamMembersData, error: teamError } = await supabase
+        .from('users')
+        .select('*')
+        .eq('department_id', selectedDepartment.id)
+        .in('role', ['technician', 'team_leader'])
+        .eq('is_active', true)
+        .order('full_name');
+
       if (teamError) throw teamError;
       
-      console.log('Team members fetched:', teamMembersData.length);
+      console.log('Team members WITH department filter:', teamMembersData?.length || 0, teamMembersData);
       setTeamMembers(teamMembersData || []);
 
-      // Get reports for the team
-      const { data: reportData, error: reportError } = await userService.getManagerTeamReports(user.id);
-      if (reportError) throw reportError;
+      // Get reports from team members in this department
+      const teamMemberIds = (teamMembersData || []).map(m => m.id);
+      let reportData: any[] = [];
       
-      console.log('Reports fetched:', reportData.length);
-      setReports(reportData || []);
+      if (teamMemberIds.length > 0) {
+        const { data, error: reportError } = await supabase
+          .from('service_reports')
+          .select('*')
+          .in('technician_id', teamMemberIds)
+          .neq('status', 'draft')
+          .order('created_at', { ascending: false });
+
+        if (reportError) throw reportError;
+        
+        reportData = data || [];
+        console.log('Reports fetched:', reportData.length);
+        setReports(reportData);
+      } else {
+        setReports([]);
+      }
 
       // Calculate stats
       const totalTeamMembers = teamMembersData?.length || 0;
       const activeMembers = teamMembersData?.filter(m => m.is_active).length || 0;
-      const totalReports = reportData?.length || 0;
-      const pendingReports = reportData?.filter(r => 
+      const totalReports = reportData.length;
+      const pendingReports = reportData.filter(r => 
         !r.approval_status || r.approval_status === 'pending'
-      ).length || 0;
-      const approvedReports = reportData?.filter(r => 
+      ).length;
+      const approvedReports = reportData.filter(r => 
         r.approval_status === 'approve'
-      ).length || 0;
-      const rejectedReports = reportData?.filter(r => 
+      ).length;
+      const rejectedReports = reportData.filter(r => 
         r.approval_status === 'reject'
-      ).length || 0;
+      ).length;
 
       console.log('Stats calculated:', {
         totalTeamMembers,

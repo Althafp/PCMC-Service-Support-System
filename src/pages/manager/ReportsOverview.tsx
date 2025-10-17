@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, FileText, Search, Filter, Eye, CheckCircle, XCircle, Clock } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDepartment } from '../../contexts/DepartmentContext';
 
 interface TeamReport {
   id: string;
@@ -23,6 +24,7 @@ interface TeamReport {
 export function ReportsOverview() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { selectedDepartment } = useDepartment();
   const [reports, setReports] = useState<TeamReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -32,31 +34,21 @@ export function ReportsOverview() {
   const [teamLeaders, setTeamLeaders] = useState<{ id: string; full_name: string }[]>([]);
 
   useEffect(() => {
-    if (user) {
+    if (user && selectedDepartment) {
       fetchTeamReports();
     }
-  }, [user, filterTeamLeader]);
+  }, [user, selectedDepartment, filterTeamLeader]);
 
   const fetchTeamReports = async () => {
-    if (!user) return;
+    if (!user || !selectedDepartment) return;
 
     try {
-      // First get team leaders under this manager
-      const { data: teamLeadersData, error: teamLeadersError } = await supabase
-        .from('users')
-        .select('id, full_name')
-        .eq('manager_id', user.id)
-        .eq('role', 'team_leader')
-        .eq('is_active', true);
-
-      if (teamLeadersError) throw teamLeadersError;
-      setTeamLeaders(teamLeadersData || []);
-
-      // Get all team members under this manager (including team leaders and their subordinates)
+      // Get team members in selected department only
       const { data: teamData, error: teamError } = await supabase
         .from('users')
         .select('id, team_leader_id')
-        .eq('manager_id', user.id);
+        .eq('department_id', selectedDepartment.id)
+        .in('role', ['technician', 'team_leader']);
 
       if (teamError) throw teamError;
 
@@ -81,7 +73,7 @@ export function ReportsOverview() {
         technicianIds = techData?.map(t => t.id) || [];
       }
 
-      // Then get reports from filtered team members
+      // Then get reports from filtered team members (exclude drafts)
       const { data, error } = await supabase
         .from('service_reports')
         .select(`
@@ -97,22 +89,28 @@ export function ReportsOverview() {
           technician:users!service_reports_technician_id_fkey(full_name, employee_id)
         `)
         .in('technician_id', technicianIds)
+        .neq('status', 'draft') // Exclude drafts
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       
-      const teamReports = data?.map(report => ({
-        id: report.id,
-        title: report.title || 'Untitled Report',
-        status: report.status,
-        complaint_no: report.complaint_no,
-        complaint_type: report.complaint_type,
-        location: report.location,
-        created_at: report.created_at,
-        approval_status: report.approval_status,
-        rejection_remarks: report.rejection_remarks,
-        technician: report.technician,
-      })) || [];
+      const teamReports = data?.map(report => {
+        // Handle if technician is array or object
+        const tech = Array.isArray(report.technician) ? report.technician[0] : report.technician;
+        
+        return {
+          id: report.id,
+          title: report.title || 'Untitled Report',
+          status: report.status,
+          complaint_no: report.complaint_no,
+          complaint_type: report.complaint_type,
+          location: report.location,
+          created_at: report.created_at,
+          approval_status: report.approval_status,
+          rejection_remarks: report.rejection_remarks,
+          technician: tech || { full_name: 'Unknown', employee_id: 'N/A' },
+        };
+      }) || [];
       
       setReports(teamReports);
     } catch (error) {

@@ -44,9 +44,9 @@ export function AdminDashboard() {
     try {
       const [usersResult, reportsResult, locationsResult, pendingResult] = await Promise.all([
         supabase.from('users').select('id, is_active'),
-        supabase.from('service_reports').select('id, status'),
+        supabase.from('service_reports').select('id, status').neq('status', 'draft'), // Exclude drafts
         supabase.from('location_details').select('id'),
-        supabase.from('service_reports').select('id').eq('status', 'submitted'),
+        supabase.from('service_reports').select('id').eq('status', 'submitted'), // Only submitted (excludes drafts)
       ]);
 
       const users = usersResult.data || [];
@@ -78,17 +78,19 @@ export function AdminDashboard() {
         .order('created_at', { ascending: false })
         .limit(3);
 
-      // Get recent reports
+      // Get recent reports (exclude drafts)
       const { data: recentReports } = await supabase
         .from('service_reports')
         .select('id, created_at, technician:users!service_reports_technician_id_fkey(full_name, role)')
+        .neq('status', 'draft') // Exclude drafts
         .order('created_at', { ascending: false })
         .limit(3);
 
-      // Get recent approvals
+      // Get recent approvals (exclude drafts)
       const { data: recentApprovals } = await supabase
         .from('service_reports')
         .select('id, approved_at, approval_status, technician:users!service_reports_technician_id_fkey(full_name, role)')
+        .neq('status', 'draft') // Exclude drafts
         .not('approved_at', 'is', null)
         .order('approved_at', { ascending: false })
         .limit(3);

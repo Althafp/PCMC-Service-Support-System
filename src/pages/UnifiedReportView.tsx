@@ -2,1134 +2,616 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, 
-  FileText, 
-  MapPin, 
-  Calendar, 
-  User, 
+  Download, 
+  Share2, 
+  Printer, 
   CheckCircle, 
   XCircle, 
-  Clock, 
-  Users,
-  Printer,
-  Thermometer,
-  Camera,
-  Settings,
-  Battery,
-  Wifi,
-  CheckSquare,
-  AlertCircle
+  Clock,
+  MapPin,
+  ThermometerSun,
+  Camera
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { useAuth } from '../contexts/AuthContext';
 import { format } from 'date-fns';
-
-interface ServiceReport {
-  id: string;
-  complaint_no: string;
-  complaint_type: string;
-  project_phase: string;
-  system_type: string;
-  date: string;
-  jb_sl_no?: string;
-  zone: string;
-  location: string;
-  ward_no?: string;
-  ps_limits?: string;
-  pole_id?: string;
-  rfp_no?: string;
-  latitude?: number;
-  longitude?: number;
-  before_image_url?: string;
-  after_image_url?: string;
-  raw_power_supply_images?: string[];
-  ups_input_image_url?: string;
-  ups_output_image_url?: string;
-  thermistor_image_url?: string;
-  thermistor_temperature?: number;
-  checklist_data?: any;
-  nature_of_complaint?: string;
-  field_team_remarks?: string;
-  customer_feedback?: string;
-  rejection_remarks?: string;
-  tl_name?: string;
-  tl_signature?: string;
-  tl_mobile?: string;
-  tech_engineer?: string;
-  tech_signature?: string;
-  tech_mobile?: string;
-  technician_id?: string;
-  title?: string;
-  approval_status?: string;
-  team_leader_id?: string;
-  status: string;
-  created_at: string;
-  updated_at: string;
-  technician: {
-    full_name: string;
-    employee_id: string;
-    email?: string;
-    mobile?: string;
-    team_leader_id?: string;
-    manager_id?: string;
-    teamLeaderName?: string;
-    managerName?: string;
-  };
-}
+import { generateReportPDF } from '../utils/pdfGenerator';
 
 export function UnifiedReportView() {
   const { reportId } = useParams<{ reportId: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const [report, setReport] = useState<ServiceReport | null>(null);
+  const [report, setReport] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (reportId && user) {
+    if (reportId) {
       fetchReport();
     }
-  }, [reportId, user]);
+  }, [reportId]);
 
   const fetchReport = async () => {
-    if (!reportId) return;
-
     try {
       const { data, error } = await supabase
         .from('service_reports')
         .select(`
           *,
-          technician:users!service_reports_technician_id_fkey(full_name, employee_id, email, mobile, team_leader_id, manager_id)
+          technician:users!service_reports_technician_id_fkey(full_name, employee_id, mobile),
+          team_leader:users!service_reports_team_leader_id_fkey(full_name, mobile)
         `)
         .eq('id', reportId)
         .single();
 
       if (error) throw error;
-
-      // Fetch team leader and manager names separately
-      let teamLeaderName = 'Unassigned';
-      let managerName = 'Unassigned';
-
-      if (data.technician?.team_leader_id) {
-        try {
-          const { data: tlData } = await supabase
-            .from('users')
-            .select('full_name')
-            .eq('id', data.technician.team_leader_id)
-            .single();
-          if (tlData) teamLeaderName = tlData.full_name;
-        } catch (error) {
-          console.warn('Could not fetch team leader name:', error);
-        }
-      }
-
-      if (data.technician?.manager_id) {
-        try {
-          const { data: mgrData } = await supabase
-            .from('users')
-            .select('full_name')
-            .eq('id', data.technician.manager_id)
-            .single();
-          if (mgrData) managerName = mgrData.full_name;
-        } catch (error) {
-          console.warn('Could not fetch manager name:', error);
-        }
-      }
-
-      // Set report with enhanced technician data
-      setReport({
-        ...data,
-        technician: {
-          ...data.technician,
-          teamLeaderName,
-          managerName
-        }
-      });
+      setReport(data);
     } catch (error) {
       console.error('Error fetching report:', error);
-      setError('Error loading report. Please try again.');
+      alert('Error loading report. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const getStatusBadge = (status: string, approvalStatus?: string) => {
-    if (approvalStatus === 'approve') {
-      return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-          <CheckCircle className="w-4 h-4 mr-1" />
-          Approved
-        </span>
-      );
-    }
-    if (approvalStatus === 'reject') {
-      return (
-        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-          <XCircle className="w-4 h-4 mr-1" />
-          Rejected
-        </span>
-      );
-    }
+  const handleDownloadPDF = async () => {
+    if (!report) return;
     
-    switch (status) {
-      case 'draft':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-            <Clock className="w-4 h-4 mr-1" />
-            Draft
-          </span>
-        );
-      case 'submitted':
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-            <FileText className="w-4 h-4 mr-1" />
-            Submitted
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-            {status}
-          </span>
-        );
+    try {
+      console.log('📄 Generating PDF for report:', report.complaint_no);
+      
+      // Fetch project logo if project_id exists
+      let projectLogoBase64 = undefined;
+      if (report.project_id) {
+        try {
+          const { data: projectData } = await supabase
+            .from('projects')
+            .select('logo_url')
+            .eq('id', report.project_id)
+            .single();
+
+          if (projectData?.logo_url) {
+            console.log('Fetching project logo:', projectData.logo_url);
+            
+            // Convert image URL to base64
+            const response = await fetch(projectData.logo_url);
+            const blob = await response.blob();
+            const base64 = await new Promise<string>((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result as string);
+              reader.readAsDataURL(blob);
+            });
+            
+            projectLogoBase64 = base64;
+            console.log('✅ Logo loaded successfully');
+          }
+        } catch (logoError) {
+          console.warn('Could not load project logo:', logoError);
+          // Continue without logo
+        }
+      }
+      
+      await generateReportPDF(report, projectLogoBase64);
+      console.log('✅ PDF generated successfully');
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Error generating PDF. Please try again.');
     }
   };
 
-  const handlePrint = () => {
-    // Create a new window for printing
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    if (!printWindow) {
-      alert('Please allow popups to print the report');
-      return;
+  const getStatusBadge = () => {
+    if (!report) return null;
+
+    if (report.approval_status === 'approve') {
+      return (
+        <div className="inline-flex items-center px-4 py-2 bg-green-100 text-green-800 rounded-full">
+          <CheckCircle className="w-5 h-5 mr-2" />
+          Approved
+        </div>
+      );
+    } else if (report.approval_status === 'reject') {
+      return (
+        <div className="inline-flex items-center px-4 py-2 bg-red-100 text-red-800 rounded-full">
+          <XCircle className="w-5 h-5 mr-2" />
+          Rejected
+        </div>
+      );
+    } else {
+      return (
+        <div className="inline-flex items-center px-4 py-2 bg-yellow-100 text-yellow-800 rounded-full">
+          <Clock className="w-5 h-5 mr-2" />
+          Pending Review
+        </div>
+      );
     }
+  };
 
-    // Create the print content with professional PDF-like layout
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Service Report - ${report.title || report.complaint_no || report.id}</title>
-        <style>
-          @page {
-            margin: 0.5in;
-            size: A4;
-          }
-          
-          body {
-            font-family: 'Times New Roman', serif;
-            font-size: 12pt;
-            line-height: 1.4;
-            color: #000;
-            background: white;
-            margin: 0;
-            padding: 20px;
-          }
-          
-          .header {
-            text-align: center;
-            border-bottom: 3px solid #000;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
-          }
-          
-          .header h1 {
-            font-size: 28pt;
-            font-weight: bold;
-            margin: 0;
-            color: #000;
-            text-transform: uppercase;
-          }
-          
-          .header p {
-            font-size: 14pt;
-            margin: 5px 0 0 0;
-            color: #333;
-          }
-          
-          .section {
-            margin-bottom: 25px;
-            page-break-inside: avoid;
-          }
-          
-          .section h2 {
-            font-size: 16pt;
-            font-weight: bold;
-            border-bottom: 2px solid #000;
-            padding-bottom: 5px;
-            margin-bottom: 15px;
-            color: #000;
-            text-transform: uppercase;
-          }
-          
-          .grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-          }
-          
-          .field {
-            margin-bottom: 12px;
-          }
-          
-          .field label {
-            font-weight: bold;
-            font-size: 11pt;
-            color: #000;
-            display: block;
-            margin-bottom: 3px;
-            text-transform: uppercase;
-          }
-          
-          .field p {
-            font-size: 11pt;
-            margin: 0;
-            padding: 8px 0;
-            border-bottom: 1px solid #000;
-            color: #000;
-            min-height: 20px;
-          }
-          
-          .signatures {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 40px;
-            margin-top: 20px;
-          }
-          
-          .signature-box {
-            border: 2px solid #000;
-            padding: 20px;
-            text-align: center;
-            min-height: 120px;
-          }
-          
-          .signature-box h4 {
-            font-size: 12pt;
-            font-weight: bold;
-            margin: 0 0 15px 0;
-            color: #000;
-            text-transform: uppercase;
-          }
-          
-          .signature-box img {
-            max-width: 200px;
-            max-height: 80px;
-            border: 1px solid #000;
-          }
-          
-          .checklist {
-            border: 2px solid #000;
-            margin-top: 10px;
-          }
-          
-          .checklist-header {
-            background: #f0f0f0;
-            padding: 10px;
-            font-weight: bold;
-            border-bottom: 2px solid #000;
-            font-size: 11pt;
-            text-transform: uppercase;
-          }
-          
-          .checklist-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 8px 10px;
-            border-bottom: 1px solid #000;
-            font-size: 10pt;
-          }
-          
-          .checklist-item:last-child {
-            border-bottom: none;
-          }
-          
-          .status {
-            font-weight: bold;
-            padding: 3px 8px;
-            border: 1px solid #000;
-            font-size: 9pt;
-            text-transform: uppercase;
-          }
-          
-          .status-ok {
-            background: #d4edda;
-            color: #155724;
-          }
-          
-          .status-issue {
-            background: #f8d7da;
-            color: #721c24;
-          }
-          
-          .status-na {
-            background: #e2e3e5;
-            color: #383d41;
-          }
-          
-          .images {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-top: 15px;
-          }
-          
-          .image {
-            border: 2px solid #000;
-            padding: 15px;
-            text-align: center;
-          }
-          
-          .image h4 {
-            font-size: 11pt;
-            font-weight: bold;
-            margin: 0 0 10px 0;
-            color: #000;
-            text-transform: uppercase;
-          }
-          
-          .image img {
-            max-width: 100%;
-            max-height: 200px;
-            border: 1px solid #000;
-          }
-          
-          .footer {
-            margin-top: 40px;
-            text-align: center;
-            font-size: 10pt;
-            color: #666;
-            border-top: 2px solid #000;
-            padding-top: 15px;
-          }
-          
-          .page-break {
-            page-break-before: always;
-          }
-          
-          .no-break {
-            page-break-inside: avoid;
-          }
-          
-          .full-width {
-            grid-column: 1 / -1;
-          }
-        </style>
-      </head>
-      <body>
-        <!-- Professional Header -->
-        <div class="header">
-          <h1>Service Report</h1>
-          <p>Comprehensive Technical Service Documentation</p>
-        </div>
+  const renderEquipmentChecklist = () => {
+    if (!report?.checklist_data) return null;
 
-        <!-- Basic Information -->
-        <div class="section">
-          <h2>Basic Information</h2>
-          <div class="grid">
-            <div class="field">
-              <label>Complaint Number</label>
-              <p>${report.complaint_no || 'N/A'}</p>
-            </div>
-            <div class="field">
-              <label>Complaint Type</label>
-              <p>${report.complaint_type || 'N/A'}</p>
-            </div>
-            <div class="field">
-              <label>Project Phase</label>
-              <p>${report.project_phase || 'N/A'}</p>
-            </div>
-            <div class="field">
-              <label>System Type</label>
-              <p>${report.system_type || 'N/A'}</p>
-            </div>
-            <div class="field">
-              <label>Zone</label>
-              <p>${report.zone || 'N/A'}</p>
-            </div>
-            <div class="field">
-              <label>Location</label>
-              <p>${report.location || 'N/A'}</p>
-            </div>
-          </div>
-        </div>
+    const sections = Object.keys(report.checklist_data);
+    const remarks = report.equipment_remarks || {};
 
-        <!-- Location Details -->
-        <div class="section">
-          <h2>Location Details</h2>
-          <div class="grid">
-            <div class="field">
-              <label>Ward No</label>
-              <p>${report.ward_no || 'N/A'}</p>
-            </div>
-            <div class="field">
-              <label>PS Limits</label>
-              <p>${report.ps_limits || 'N/A'}</p>
-            </div>
-            <div class="field">
-              <label>Pole ID</label>
-              <p>${report.pole_id || 'N/A'}</p>
-            </div>
-            <div class="field">
-              <label>RFP No</label>
-              <p>${report.rfp_no || 'N/A'}</p>
-            </div>
-            <div class="field">
-              <label>JB SL No</label>
-              <p>${report.jb_sl_no || 'N/A'}</p>
-            </div>
-            <div class="field">
-              <label>Coordinates</label>
-              <p>${report.latitude && report.longitude ? `${report.latitude}, ${report.longitude}` : 'N/A'}</p>
-            </div>
-          </div>
-        </div>
+    const getStatusBadge = (status: string) => {
+      switch (status) {
+        case 'ok':
+          return <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded">OK</span>;
+        case 'issue':
+          return <span className="px-2 py-1 bg-orange-100 text-orange-800 text-xs font-semibold rounded">ISSUE</span>;
+        case 'na':
+          return <span className="px-2 py-1 bg-gray-100 text-gray-800 text-xs font-semibold rounded">N/A</span>;
+        default:
+          return null;
+      }
+    };
 
-        ${report.nature_of_complaint ? `
-        <!-- Complaint Details -->
-        <div class="section">
-          <h2>Complaint Details</h2>
-          <div class="field full-width">
-            <label>Nature of Complaint</label>
-            <p>${report.nature_of_complaint}</p>
-          </div>
-          ${report.field_team_remarks ? `
-          <div class="field full-width">
-            <label>Field Team Remarks</label>
-            <p>${report.field_team_remarks}</p>
-          </div>
-          ` : ''}
-          ${report.customer_feedback ? `
-          <div class="field full-width">
-            <label>Customer Feedback</label>
-            <p>${report.customer_feedback}</p>
-          </div>
-          ` : ''}
-        </div>
-        ` : ''}
+    return (
+      <div className="space-y-4">
+        {sections.map((section) => {
+          const items = report.checklist_data[section];
+          const itemKeys = Object.keys(items);
 
-        <!-- Technical Details -->
-        <div class="section">
-          <h2>Technical Details</h2>
-          <div class="grid">
-            <div class="field">
-              <label>Technician Engineer</label>
-              <p>${report.tech_engineer || 'N/A'}</p>
-            </div>
-            <div class="field">
-              <label>Technician Mobile</label>
-              <p>${report.tech_mobile || 'N/A'}</p>
-            </div>
-            <div class="field">
-              <label>Team Leader Name</label>
-              <p>${report.tl_name || 'N/A'}</p>
-            </div>
-            <div class="field">
-              <label>Team Leader Mobile</label>
-              <p>${report.tl_mobile || 'N/A'}</p>
-            </div>
-          </div>
-        </div>
+          return (
+            <div key={section} className="bg-white border-2 border-gray-200 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
+                📁 {section}
+              </h3>
+              <div className="border-t border-gray-300 pt-3 space-y-3">
+                {itemKeys.map((item) => {
+                  const status = items[item];
+                  const remarkKey = `${section}-${item}`;
+                  const valueKey = `${section}-${item}-value`;
+                  const remark = remarks[remarkKey];
+                  const value = remarks[valueKey];
+                  const icon = status === 'ok' ? '✓' : status === 'issue' ? '⚠' : '⊖';
 
-        <!-- Signatures -->
-        <div class="section">
-          <h2>Signatures</h2>
-          <div class="signatures">
-            <div class="signature-box">
-              <h4>Technician Signature</h4>
-              ${report.tech_signature ? `<img src="${report.tech_signature}" alt="Technician Signature" />` : '<p>No signature</p>'}
-            </div>
-            <div class="signature-box">
-              <h4>Team Leader Signature</h4>
-              ${report.tl_signature ? `<img src="${report.tl_signature}" alt="Team Leader Signature" />` : '<p>No signature</p>'}
-            </div>
-          </div>
-        </div>
+                  return (
+                    <div key={item} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-gray-700 flex items-center">
+                          <span className="mr-2">{icon}</span>
+                          {item}
+                        </span>
+                        {getStatusBadge(status)}
+                      </div>
 
-        <!-- Images -->
-        <div class="section">
-          <h2>Images</h2>
-          <div class="images">
-            ${report.before_image_url ? `
-            <div class="image">
-              <h4>Before Image</h4>
-              <img src="${report.before_image_url}" alt="Before" />
-            </div>
-            ` : ''}
-            ${report.after_image_url ? `
-            <div class="image">
-              <h4>After Image</h4>
-              <img src="${report.after_image_url}" alt="After" />
-            </div>
-            ` : ''}
-            ${report.ups_input_image_url ? `
-            <div class="image">
-              <h4>UPS Input</h4>
-              <img src="${report.ups_input_image_url}" alt="UPS Input" />
-            </div>
-            ` : ''}
-            ${report.ups_output_image_url ? `
-            <div class="image">
-              <h4>UPS Output</h4>
-              <img src="${report.ups_output_image_url}" alt="UPS Output" />
-            </div>
-            ` : ''}
-            ${report.thermistor_image_url ? `
-            <div class="image">
-              <h4>Thermistor</h4>
-              <img src="${report.thermistor_image_url}" alt="Thermistor" />
-            </div>
-            ` : ''}
-          </div>
-        </div>
+                      {/* Show value if exists (UPS/Battery) */}
+                      {value && (
+                        <div className="ml-6 px-3 py-2 bg-blue-50 border border-blue-200 rounded text-sm">
+                          <span className="font-medium text-blue-900">ℹ️ Value:</span>
+                          <span className="text-blue-700 ml-2">{value}</span>
+                        </div>
+                      )}
 
-        ${report.thermistor_temperature ? `
-        <!-- Additional Measurements -->
-        <div class="section">
-          <h2>Additional Measurements</h2>
-          <div class="grid">
-            <div class="field">
-              <label>Thermistor Temperature</label>
-              <p>${report.thermistor_temperature}°C</p>
+                      {/* Show remark if issue */}
+                      {status === 'issue' && remark && (
+                        <div className="ml-6 px-3 py-2 bg-orange-50 border border-orange-200 rounded text-sm">
+                          <span className="font-medium text-orange-900">💬 Remark:</span>
+                          <span className="text-orange-700 ml-2">{remark}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-            ${report.jb_temperature ? `
-            <div class="field">
-              <label>Junction Box Temperature</label>
-              <p>${report.jb_temperature}°C</p>
-            </div>
-            ` : ''}
-          </div>
-        </div>
-        ` : ''}
+          );
+        })}
 
-        ${report.checklist_data ? `
-        <!-- Equipment Checklist -->
-        <div class="section">
-          <h2>Equipment Checklist</h2>
-          ${Object.entries(report.checklist_data).map(([category, items]) => `
-            <div class="checklist">
-              <div class="checklist-header">${category}</div>
-              ${Object.entries(items).map(([item, status]) => `
-                <div class="checklist-item">
-                  <span>${item}</span>
-                  <span class="status ${status === 'ok' ? 'status-ok' : status === 'issue' ? 'status-issue' : 'status-na'}">${status === 'ok' ? 'OK' : status === 'issue' ? 'Issue' : 'N/A'}</span>
+        {/* Camera Special Info */}
+        {(remarks.camera_count || remarks.camera_remarks) && (
+          <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-purple-900 mb-3">📹 Camera Information</h3>
+            <div className="space-y-2 text-sm">
+              {remarks.camera_count && (
+                <div className="flex items-center">
+                  <span className="font-medium text-purple-900">• Number of Cameras:</span>
+                  <span className="text-purple-700 ml-2">{remarks.camera_count}</span>
                 </div>
-              `).join('')}
-            </div>
-          `).join('')}
-        </div>
-        ` : ''}
-
-        ${report.approval_status ? `
-        <!-- Approval Information -->
-        <div class="section">
-          <h2>Approval Information</h2>
-          <div class="grid">
-            <div class="field">
-              <label>Approval Status</label>
-              <p>${report.approval_status === 'approve' ? 'Approved' : report.approval_status === 'reject' ? 'Rejected' : 'Pending'}</p>
-            </div>
-            ${report.rejection_remarks ? `
-            <div class="field">
-              <label>Rejection Remarks</label>
-              <p style="color: red;">${report.rejection_remarks}</p>
-            </div>
-            ` : ''}
-          </div>
-        </div>
-        ` : ''}
-
-        <!-- Timestamps -->
-        <div class="section">
-          <h2>Timestamps</h2>
-          <div class="grid">
-            <div class="field">
-              <label>Created At</label>
-              <p>${report.created_at ? new Date(report.created_at).toLocaleString() : 'N/A'}</p>
-            </div>
-            <div class="field">
-              <label>Updated At</label>
-              <p>${report.updated_at ? new Date(report.updated_at).toLocaleString() : 'N/A'}</p>
+              )}
+              {remarks.camera_remarks && (
+                <div className="flex items-start">
+                  <span className="font-medium text-purple-900">• Camera Remarks:</span>
+                  <span className="text-purple-700 ml-2">{remarks.camera_remarks}</span>
+                </div>
+              )}
             </div>
           </div>
-        </div>
+        )}
 
-        <!-- Print Footer -->
-        <div class="footer">
-          <p>Generated on ${new Date().toLocaleString()} | Service Report System</p>
-          <p>This is an official document generated by the automated service reporting system.</p>
-        </div>
-      </body>
-      </html>
-    `;
-
-    // Write the content to the new window
-    printWindow.document.write(printContent);
-    printWindow.document.close();
-
-    // Wait for images to load, then print
-    printWindow.onload = function() {
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 1000);
-    };
-  };
-
-  const renderChecklistItem = (category: string, item: string, status: string, remarks?: string) => {
-    const getStatusIcon = (status: string) => {
-      switch (status) {
-        case 'ok':
-          return <CheckCircle className="w-4 h-4 text-green-600" />;
-        case 'issue':
-          return <AlertCircle className="w-4 h-4 text-red-600" />;
-        case 'na':
-          return <XCircle className="w-4 h-4 text-gray-600" />;
-        default:
-          return <Clock className="w-4 h-4 text-gray-600" />;
-      }
-    };
-
-    const getStatusText = (status: string) => {
-      switch (status) {
-        case 'ok':
-          return 'OK';
-        case 'issue':
-          return 'Issue';
-        case 'na':
-          return 'N/A';
-        default:
-          return 'Unknown';
-      }
-    };
-
-    return (
-      <div key={item} className="flex items-center justify-between p-2 border-b border-gray-100">
-        <div className="flex-1">
-          <div className="flex items-center">
-            {getStatusIcon(status)}
-            <span className="ml-2 text-sm font-medium text-gray-900">{item}</span>
-          </div>
-          {remarks && (
-            <div className="ml-6 mt-1 text-xs text-gray-600">
-              <strong>Remarks:</strong> {remarks}
+        {/* Equipment Values Summary */}
+        {Object.keys(remarks).some(key => key.endsWith('-value')) && (
+          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-blue-900 mb-3">📊 Equipment Values</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+              {Object.keys(remarks)
+                .filter(key => key.endsWith('-value'))
+                .map(key => {
+                  const label = key.replace('-value', '').split('-').pop();
+                  return (
+                    <div key={key} className="flex items-center justify-between px-3 py-2 bg-white rounded border border-blue-300">
+                      <span className="font-medium text-blue-900">• {label}:</span>
+                      <span className="text-blue-700">{remarks[key]}</span>
+                    </div>
+                  );
+                })}
             </div>
-          )}
-        </div>
-        <span className={`text-xs font-medium px-2 py-1 rounded ${
-          status === 'ok' ? 'bg-green-100 text-green-800' :
-          status === 'issue' ? 'bg-red-100 text-red-800' :
-          'bg-gray-100 text-gray-800'
-        }`}>
-          {getStatusText(status)}
-        </span>
-      </div>
-    );
-  };
+          </div>
+        )}
 
-  const renderImageSection = (title: string, imageUrl?: string, altText?: string) => {
-    if (!imageUrl) return null;
-
-    return (
-      <div className="bg-gray-50 rounded-lg p-4">
-        <h4 className="font-medium text-gray-900 mb-2">{title}</h4>
-        <img
-          src={imageUrl}
-          alt={altText || title}
-          className="w-full h-48 object-contain border border-gray-300 rounded"
-        />
+        {/* Equipment Remarks Summary */}
+        {Object.keys(remarks).some(key => !key.endsWith('-value') && key !== 'camera_count' && key !== 'camera_remarks') && (
+          <div className="bg-orange-50 border-2 border-orange-200 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-orange-900 mb-3">⚠️ Equipment Remarks</h3>
+            <div className="space-y-2 text-sm">
+              {Object.keys(remarks)
+                .filter(key => !key.endsWith('-value') && key !== 'camera_count' && key !== 'camera_remarks')
+                .map(key => {
+                  const label = key.split('-').pop();
+                  return (
+                    <div key={key} className="flex items-start px-3 py-2 bg-white rounded border border-orange-300">
+                      <span className="font-medium text-orange-900">• {label}:</span>
+                      <span className="text-orange-700 ml-2">{remarks[key]}</span>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
-  if (error || !report) {
+  if (!report) {
     return (
-      <div className="text-center py-12">
-        <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Report Not Found</h3>
-        <p className="text-gray-600 mb-4">{error || 'The requested report could not be found.'}</p>
-        <button
-          onClick={() => navigate(-1)}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Go Back
-        </button>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Report Not Found</h2>
+          <button
+            onClick={() => navigate(-1)}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Go Back
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 print:max-w-none print:space-y-4">
+    <div className="max-w-6xl mx-auto space-y-6 pb-12">
       {/* Header */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 print:shadow-none print:border-none">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={() => navigate(-1)}
-              className="flex items-center text-gray-600 hover:text-gray-900 print:hidden"
-            >
-              <ArrowLeft className="w-5 h-5 mr-2" />
-              Back
-            </button>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                Service Report - {report.title || report.complaint_no || report.id}
-              </h1>
-              <p className="text-gray-600">Comprehensive report details</p>
-            </div>
-          </div>
-          <button
-            onClick={handlePrint}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 print:hidden"
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center text-gray-600 hover:text-gray-900"
+        >
+          <ArrowLeft className="w-5 h-5 mr-2" />
+          Back
+        </button>
+        <h1 className="text-3xl font-bold text-gray-900">
+          Report - {report.complaint_no}
+        </h1>
+        <div className="flex space-x-2">
+          <button 
+            onClick={handleDownloadPDF}
+            className="flex items-center px-3 py-2 text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50"
+            title="Download PDF"
           >
-            <Printer className="w-4 h-4 mr-2" />
-            Print Report
+            <Download className="w-5 h-5 mr-1" />
+            <span className="text-sm">Download</span>
+          </button>
+          <button className="p-2 text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg" title="Share">
+            <Share2 className="w-5 h-5" />
+          </button>
+          <button 
+            onClick={() => window.print()}
+            className="p-2 text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg"
+            title="Print"
+          >
+            <Printer className="w-5 h-5" />
           </button>
         </div>
+      </div>
 
-        {/* Status and Basic Info */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          <div className="flex items-center space-x-2">
-            <FileText className="w-5 h-5 text-gray-400" />
-            <span className="text-sm text-gray-600">Status:</span>
-            {getStatusBadge(report.status, report.approval_status)}
-          </div>
-          <div className="flex items-center space-x-2">
-            <Calendar className="w-5 h-5 text-gray-400" />
-            <span className="text-sm text-gray-600">Date:</span>
-            <span className="text-sm font-medium">{new Date(report.date).toLocaleDateString()}</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <User className="w-5 h-5 text-gray-400" />
-            <span className="text-sm text-gray-600">Technician:</span>
-            <span className="text-sm font-medium">{report.technician?.full_name || 'N/A'}</span>
+      {/* Status Card */}
+      <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+        <div className="flex items-center justify-between">
+          {getStatusBadge()}
+          <div className="text-right">
+            <p className="text-sm text-gray-600">Report</p>
+            <p className="text-xl font-bold text-gray-900">{report.complaint_no}</p>
           </div>
         </div>
       </div>
 
-      {/* Basic Information */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 print:shadow-none print:border-none">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <FileText className="w-5 h-5 mr-2 text-blue-600" />
-          Basic Information
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Complaint Number</label>
-            <p className="mt-1 text-sm text-gray-900">{report.complaint_no || 'N/A'}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Complaint Type</label>
-            <p className="mt-1 text-sm text-gray-900">{report.complaint_type || 'N/A'}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Project Phase</label>
-            <p className="mt-1 text-sm text-gray-900">{report.project_phase || 'N/A'}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">System Type</label>
-            <p className="mt-1 text-sm text-gray-900">{report.system_type || 'N/A'}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Zone</label>
-            <p className="mt-1 text-sm text-gray-900">{report.zone || 'N/A'}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Location</label>
-            <p className="mt-1 text-sm text-gray-900">{report.location || 'N/A'}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Location Details */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 print:shadow-none print:border-none">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <MapPin className="w-5 h-5 mr-2 text-blue-600" />
-          Location Details
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Ward No</label>
-            <p className="mt-1 text-sm text-gray-900">{report.ward_no || 'N/A'}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">PS Limits</label>
-            <p className="mt-1 text-sm text-gray-900">{report.ps_limits || 'N/A'}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Pole ID</label>
-            <p className="mt-1 text-sm text-gray-900">{report.pole_id || 'N/A'}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">RFP No</label>
-            <p className="mt-1 text-sm text-gray-900">{report.rfp_no || 'N/A'}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">JB SL No</label>
-            <p className="mt-1 text-sm text-gray-900">{report.jb_sl_no || 'N/A'}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Coordinates</label>
-            <p className="mt-1 text-sm text-gray-900">
-              {report.latitude && report.longitude 
-                ? `${report.latitude}, ${report.longitude}` 
-                : 'N/A'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Complaint Details */}
-      {report.nature_of_complaint && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 print:shadow-none print:border-none">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <AlertCircle className="w-5 h-5 mr-2 text-blue-600" />
-            Complaint Details
-          </h2>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Nature of Complaint</label>
-              <p className="mt-1 text-sm text-gray-900">{report.nature_of_complaint}</p>
-            </div>
-            {report.field_team_remarks && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Field Team Remarks</label>
-                <p className="mt-1 text-sm text-gray-900">{report.field_team_remarks}</p>
-              </div>
-            )}
-            {report.customer_feedback && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Customer Feedback</label>
-                <p className="mt-1 text-sm text-gray-900">{report.customer_feedback}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Technical Details */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 print:shadow-none print:border-none">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <Settings className="w-5 h-5 mr-2 text-blue-600" />
-          Technical Details
-        </h2>
+      {/* SECTION 1: Basic Information */}
+      <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4 border-b pb-2">BASIC INFORMATION</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Technician Engineer</label>
-            <p className="mt-1 text-sm text-gray-900">{report.tech_engineer || 'N/A'}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Technician Mobile</label>
-            <p className="mt-1 text-sm text-gray-900">{report.tech_mobile || 'N/A'}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Team Leader Name</label>
-            <p className="mt-1 text-sm text-gray-900">{report.tl_name || 'N/A'}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Team Leader Mobile</label>
-            <p className="mt-1 text-sm text-gray-900">{report.tl_mobile || 'N/A'}</p>
+          <InfoRow label="Complaint Number" value={report.complaint_no} />
+          <InfoRow label="Complaint Type" value={report.complaint_type} />
+          <InfoRow label="Project Phase" value={report.project_phase} />
+          <InfoRow label="System Type" value={report.system_type} />
+          <InfoRow label="Date" value={report.date ? format(new Date(report.date), 'dd/MM/yyyy') : 'N/A'} />
+          <InfoRow label="Zone" value={report.zone} />
+          <InfoRow label="Location" value={report.location} />
+          <InfoRow label="JB SL Number" value={report.jb_sl_no} />
+          <InfoRow label="Ward Number" value={report.ward_no} />
+          <InfoRow label="PS Limits" value={report.ps_limits} />
+          <InfoRow label="Pole ID" value={report.pole_id} />
+          <InfoRow label="RFP Number" value={report.rfp_no} />
+        </div>
+        
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <h3 className="text-sm font-semibold text-gray-700 mb-2">Location Coordinates (Database):</h3>
+          <div className="grid grid-cols-2 gap-4">
+            <InfoRow label="Latitude" value={report.location_latitude || 'N/A'} icon={<MapPin className="w-4 h-4" />} />
+            <InfoRow label="Longitude" value={report.location_longitude || 'N/A'} icon={<MapPin className="w-4 h-4" />} />
           </div>
         </div>
       </div>
 
-      {/* Signatures */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 print:shadow-none print:border-none">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <FileText className="w-5 h-5 mr-2 text-blue-600" />
-          Signatures
+      {/* SECTION 2: Device Location (GPS) */}
+      <div className="bg-blue-50 rounded-lg shadow-sm p-6 border-2 border-blue-200">
+        <h2 className="text-xl font-semibold text-blue-900 mb-4 flex items-center">
+          <MapPin className="w-6 h-6 mr-2" />
+          DEVICE LOCATION (GPS)
         </h2>
+        <div className="grid grid-cols-2 gap-4">
+          <InfoRow label="Device Latitude (GPS)" value={report.latitude || 'N/A'} highlight />
+          <InfoRow label="Device Longitude (GPS)" value={report.longitude || 'N/A'} highlight />
+        </div>
+        <p className="text-xs text-blue-700 mt-2">
+          ℹ️ These GPS coordinates are watermarked on all images
+        </p>
+      </div>
+
+      {/* SECTION 3: Technical Details */}
+      <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4 border-b pb-2">TECHNICAL DETAILS</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <InfoRow label="Technician" value={report.technician?.full_name || report.tech_engineer || 'N/A'} />
+          <InfoRow label="Mobile" value={report.technician?.mobile || report.tech_mobile || 'N/A'} />
+          <InfoRow 
+            label="JB Temperature" 
+            value={report.jb_temperature ? `${report.jb_temperature}°C` : 'N/A'} 
+            icon={<ThermometerSun className="w-4 h-4" />}
+          />
+          <InfoRow 
+            label="Thermistor Temperature" 
+            value={report.thermistor_temperature ? `${report.thermistor_temperature}°C` : 'N/A'}
+            icon={<ThermometerSun className="w-4 h-4" />}
+          />
+        </div>
+      </div>
+
+      {/* SECTION 4: Images */}
+      <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4 border-b pb-2 flex items-center">
+          <Camera className="w-6 h-6 mr-2" />
+          IMAGES
+        </h2>
+        
+        <div className="space-y-6">
+          {/* Before/After Images */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Before & After</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {report.before_image_url && (
+                <ImageCard 
+                  url={report.before_image_url} 
+                  label="Before Image"
+                  hasGPS={true}
+                />
+              )}
+              {report.after_image_url && (
+                <ImageCard 
+                  url={report.after_image_url} 
+                  label="After Image"
+                  hasGPS={true}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* UPS Images */}
+          {(report.ups_input_image_url || report.ups_output_image_url) && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">UPS Images</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {report.ups_input_image_url && (
+                  <ImageCard url={report.ups_input_image_url} label="UPS Input" hasGPS={true} />
+                )}
+                {report.ups_output_image_url && (
+                  <ImageCard url={report.ups_output_image_url} label="UPS Output" hasGPS={true} />
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Thermistor Image */}
+          {report.thermistor_image_url && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Thermistor</h3>
+              <div className="md:w-1/2">
+                <ImageCard url={report.thermistor_image_url} label="Thermistor Image" hasGPS={true} />
+              </div>
+            </div>
+          )}
+
+          {/* Raw Power Supply Images */}
+          {report.raw_power_supply_images && report.raw_power_supply_images.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">
+                Raw Power Supply Images ({report.raw_power_supply_images.length})
+              </h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {report.raw_power_supply_images.map((url: string, index: number) => (
+                  <ImageCard 
+                    key={index} 
+                    url={url} 
+                    label={`Raw Power ${index + 1}`}
+                    hasGPS={true}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* SECTION 5: Equipment Checklist */}
+      <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4 border-b pb-2">EQUIPMENT CHECKLIST</h2>
+        {renderEquipmentChecklist()}
+      </div>
+
+      {/* SECTION 6: Complaints & Remarks */}
+      <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4 border-b pb-2">COMPLAINTS & REMARKS</h2>
+        <div className="space-y-4">
+          {report.nature_of_complaint && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Nature of Complaint:</label>
+              <p className="text-gray-900 bg-gray-50 p-3 rounded border border-gray-200">{report.nature_of_complaint}</p>
+            </div>
+          )}
+          {report.field_team_remarks && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Field Team Remarks:</label>
+              <p className="text-gray-900 bg-gray-50 p-3 rounded border border-gray-200">{report.field_team_remarks}</p>
+            </div>
+          )}
+          {report.customer_feedback && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Customer Feedback:</label>
+              <p className="text-gray-900 bg-gray-50 p-3 rounded border border-gray-200">{report.customer_feedback}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* SECTION 7: Signatures */}
+      <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
+        <h2 className="text-xl font-semibold text-gray-900 mb-4 border-b pb-2">SIGNATURES</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Technician Signature */}
-          <div className="bg-gray-50 rounded-lg p-4">
-            <h4 className="font-medium text-gray-900 mb-2">Technician Signature</h4>
+          <div className="text-center">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Technician</h3>
             {report.tech_signature ? (
-              <img
-                src={report.tech_signature}
-                alt="Technician Signature"
-                className="w-full h-32 object-contain border border-gray-300 rounded"
-              />
+              <div className="border-2 border-gray-300 rounded-lg p-4 bg-gray-50">
+                <img 
+                  src={report.tech_signature} 
+                  alt="Technician Signature" 
+                  className="w-full h-32 object-contain"
+                />
+              </div>
             ) : (
-              <div className="w-full h-32 bg-gray-200 rounded flex items-center justify-center text-gray-500">
-                No signature
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 bg-gray-50 h-32 flex items-center justify-center">
+                <p className="text-gray-400">No signature</p>
               </div>
             )}
+            <p className="font-bold text-gray-900 mt-3">{report.tech_engineer || 'N/A'}</p>
+            <p className="text-sm text-gray-600">{report.tech_mobile || 'N/A'}</p>
           </div>
 
           {/* Team Leader Signature */}
-          <div className="bg-gray-50 rounded-lg p-4">
-            <h4 className="font-medium text-gray-900 mb-2">Team Leader Signature</h4>
+          <div className="text-center">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Team Leader</h3>
             {report.tl_signature ? (
-              <img
-                src={report.tl_signature}
-                alt="Team Leader Signature"
-                className="w-full h-32 object-contain border border-gray-300 rounded"
-              />
+              <div className="border-2 border-gray-300 rounded-lg p-4 bg-gray-50">
+                <img 
+                  src={report.tl_signature} 
+                  alt="Team Leader Signature" 
+                  className="w-full h-32 object-contain"
+                />
+              </div>
             ) : (
-              <div className="w-full h-32 bg-gray-200 rounded flex items-center justify-center text-gray-500">
-                No signature
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 bg-gray-50 h-32 flex items-center justify-center">
+                <p className="text-gray-400">Pending approval</p>
               </div>
             )}
+            <p className="font-bold text-gray-900 mt-3">{report.tl_name || 'Pending'}</p>
+            <p className="text-sm text-gray-600">{report.tl_mobile || 'N/A'}</p>
           </div>
         </div>
       </div>
 
-      {/* Images */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 print:shadow-none print:border-none">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <Camera className="w-5 h-5 mr-2 text-blue-600" />
-          Images
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {renderImageSection('Before Image', report.before_image_url, 'Before')}
-          {renderImageSection('After Image', report.after_image_url, 'After')}
-          {renderImageSection('UPS Input', report.ups_input_image_url, 'UPS Input')}
-          {renderImageSection('UPS Output', report.ups_output_image_url, 'UPS Output')}
-          {renderImageSection('Thermistor', report.thermistor_image_url, 'Thermistor')}
-        </div>
-      </div>
-
-      {/* Additional Measurements */}
-      {report.thermistor_temperature && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 print:shadow-none print:border-none">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <Thermometer className="w-5 h-5 mr-2 text-blue-600" />
-            Additional Measurements
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Thermistor Temperature</label>
-              <p className="mt-1 text-sm text-gray-900">{report.thermistor_temperature}°C</p>
-            </div>
-            {report.jb_temperature && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Junction Box Temperature</label>
-                <p className="mt-1 text-sm text-gray-900">{report.jb_temperature}°C</p>
-              </div>
+      {/* SECTION 8: Approval Details */}
+      {(report.approval_status === 'approve' || report.approval_status === 'reject') && (
+        <div className={`rounded-lg shadow-sm p-6 border-2 ${
+          report.approval_status === 'approve' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
+        }`}>
+          <h2 className="text-xl font-semibold mb-4 border-b pb-2 flex items-center">
+            {report.approval_status === 'approve' ? (
+              <><CheckCircle className="w-6 h-6 mr-2 text-green-600" /> APPROVAL DETAILS</>
+            ) : (
+              <><XCircle className="w-6 h-6 mr-2 text-red-600" /> REJECTION DETAILS</>
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Equipment Checklist */}
-      {report.checklist_data && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 print:shadow-none print:border-none">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <CheckSquare className="w-5 h-5 mr-2 text-blue-600" />
-            Equipment Checklist
-          </h2>
-          <div className="space-y-4">
-            {Object.entries(report.checklist_data).map(([category, items]) => (
-              <div key={category} className="border border-gray-200 rounded-lg">
-                <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
-                  <h3 className="font-medium text-gray-900">{category}</h3>
-                </div>
-                <div className="divide-y divide-gray-100">
-                  {Object.entries(items as any).map(([item, status]) => 
-                    renderChecklistItem(category, item, status as string)
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Approval Information */}
-      {report.approval_status && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 print:shadow-none print:border-none">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-            <CheckCircle className="w-5 h-5 mr-2 text-blue-600" />
-            Approval Information
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Approval Status</label>
-              <div className="mt-1">{getStatusBadge(report.status, report.approval_status)}</div>
-            </div>
+            <InfoRow label="Approval Status" value={report.approval_status === 'approve' ? 'Approved' : 'Rejected'} />
+            {report.approval_notes && (
+              <InfoRow label="Approval Notes" value={report.approval_notes} />
+            )}
             {report.rejection_remarks && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Rejection Remarks</label>
-                <p className="mt-1 text-sm text-red-600">{report.rejection_remarks}</p>
-              </div>
+              <InfoRow label="Rejection Remarks" value={report.rejection_remarks} />
+            )}
+            {report.approved_at && (
+              <InfoRow 
+                label="Approved At" 
+                value={format(new Date(report.approved_at), 'dd/MM/yyyy HH:mm')} 
+              />
+            )}
+            {report.team_leader?.full_name && (
+              <InfoRow label="Approved By" value={report.team_leader.full_name} />
             )}
           </div>
         </div>
       )}
-
-      {/* Hierarchy Information */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 print:shadow-none print:border-none">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <Users className="w-5 h-5 mr-2 text-blue-600" />
-          Team Hierarchy
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Technician</label>
-            <p className="mt-1 text-sm text-gray-900">{report.technician?.full_name || 'N/A'}</p>
-            <p className="text-xs text-gray-500">{report.technician?.employee_id || 'N/A'}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Team Leader</label>
-            <p className="mt-1 text-sm text-gray-900">{report.technician?.teamLeaderName || 'N/A'}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Manager</label>
-            <p className="mt-1 text-sm text-gray-900">{report.technician?.managerName || 'N/A'}</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Timestamps */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 print:shadow-none print:border-none">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-          <Clock className="w-5 h-5 mr-2 text-blue-600" />
-          Timestamps
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Created At</label>
-            <p className="mt-1 text-sm text-gray-900">
-              {report.created_at ? new Date(report.created_at).toLocaleString() : 'N/A'}
-            </p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Updated At</label>
-            <p className="mt-1 text-sm text-gray-900">
-              {report.updated_at ? new Date(report.updated_at).toLocaleString() : 'N/A'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Print Styles */}
-      <style jsx>{`
-        @media print {
-          .print\\:hidden {
-            display: none !important;
-          }
-          .print\\:shadow-none {
-            box-shadow: none !important;
-          }
-          .print\\:border-none {
-            border: none !important;
-          }
-          .print\\:max-w-none {
-            max-width: none !important;
-          }
-          .print\\:space-y-4 > * + * {
-            margin-top: 1rem !important;
-          }
-        }
-      `}</style>
     </div>
   );
 }
+
+// Helper Components
+const InfoRow = ({ label, value, icon, highlight }: { 
+  label: string; 
+  value: string | number; 
+  icon?: React.ReactNode;
+  highlight?: boolean;
+}) => (
+  <div className={`flex items-start justify-between ${highlight ? 'bg-blue-50 p-3 rounded' : ''}`}>
+    <span className="text-sm font-medium text-gray-700 flex items-center">
+      {icon && <span className="mr-2">{icon}</span>}
+      {label}:
+    </span>
+    <span className={`text-sm ${highlight ? 'font-semibold text-blue-900' : 'text-gray-900'} text-right ml-4`}>
+      {value || 'N/A'}
+    </span>
+  </div>
+);
+
+const ImageCard = ({ url, label, hasGPS }: { url: string; label: string; hasGPS?: boolean }) => (
+  <div className="relative group">
+    <div className="border-2 border-gray-300 rounded-lg overflow-hidden bg-gray-50">
+      <img 
+        src={url} 
+        alt={label}
+        className="w-full h-48 object-cover hover:scale-105 transition-transform cursor-pointer"
+        onClick={() => window.open(url, '_blank')}
+      />
+    </div>
+    <p className="text-center text-sm font-medium text-gray-700 mt-2">{label}</p>
+    {hasGPS && (
+      <div className="absolute top-2 right-2 bg-green-600 text-white text-xs px-2 py-1 rounded flex items-center">
+        <MapPin className="w-3 h-3 mr-1" />
+        GPS
+      </div>
+    )}
+  </div>
+);

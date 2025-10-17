@@ -55,6 +55,7 @@ export function TeamReports() {
 
       const teamMemberIds = teamData.map(member => member.id);
 
+      // Exclude drafts - only show submitted/approved/rejected reports
       const { data, error } = await supabase
         .from('service_reports')
         .select(`
@@ -70,6 +71,7 @@ export function TeamReports() {
           technician:users!service_reports_technician_id_fkey(full_name, employee_id)
         `)
         .in('technician_id', teamMemberIds)
+        .neq('status', 'draft') // Exclude drafts
         .order('created_at', { ascending: false });
 
       if (error) throw error;

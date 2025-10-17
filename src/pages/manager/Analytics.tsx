@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, BarChart3, TrendingUp, Users, FileText, CheckCircle, XCircle, Clock, MapPin } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDepartment } from '../../contexts/DepartmentContext';
 
 interface AnalyticsData {
   totalReports: number;
@@ -20,25 +21,27 @@ interface AnalyticsData {
 export function Analytics() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { selectedDepartment } = useDepartment();
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedPeriod, setSelectedPeriod] = useState('30'); // days
 
   useEffect(() => {
-    if (user) {
+    if (user && selectedDepartment) {
       fetchAnalytics();
     }
-  }, [user, selectedPeriod]);
+  }, [user, selectedDepartment, selectedPeriod]);
 
   const fetchAnalytics = async () => {
-    if (!user) return;
+    if (!user || !selectedDepartment) return;
 
     try {
-      // Get team members under this manager
+      // Get team members in selected department only
       const { data: teamData, error: teamError } = await supabase
         .from('users')
         .select('id, full_name, role, zone, is_active')
-        .eq('manager_id', user.id);
+        .eq('department_id', selectedDepartment.id)
+        .in('role', ['technician', 'team_leader']);
 
       if (teamError) throw teamError;
 
@@ -63,7 +66,7 @@ export function Analytics() {
       const daysAgo = new Date();
       daysAgo.setDate(daysAgo.getDate() - parseInt(selectedPeriod));
 
-      // Get reports from team members
+      // Get reports from team members (exclude drafts)
       const { data: reportsData, error: reportsError } = await supabase
         .from('service_reports')
         .select(`
@@ -75,6 +78,7 @@ export function Analytics() {
           technician_id
         `)
         .in('technician_id', teamIds)
+        .neq('status', 'draft') // Exclude drafts from analytics
         .gte('created_at', daysAgo.toISOString());
 
       if (reportsError) throw reportsError;

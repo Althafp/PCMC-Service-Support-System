@@ -121,7 +121,7 @@ export function TechnicianDashboard() {
       {/* Quick Actions */}
       <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Link
             to="/technician/new-report"
             className="p-4 text-left bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
@@ -137,6 +137,14 @@ export function TechnicianDashboard() {
             <FileText className="w-6 h-6 text-green-600 mb-2" />
             <h3 className="font-medium text-gray-900">View My Reports</h3>
             <p className="text-sm text-gray-600">Check report status</p>
+          </Link>
+          <Link
+            to="/technician/drafts"
+            className="p-4 text-left bg-yellow-50 hover:bg-yellow-100 rounded-lg transition-colors"
+          >
+            <Clock className="w-6 h-6 text-yellow-600 mb-2" />
+            <h3 className="font-medium text-gray-900">My Drafts</h3>
+            <p className="text-sm text-gray-600">Continue saved drafts ({stats.draftReports})</p>
           </Link>
           <Link
             to="/technician/locations"

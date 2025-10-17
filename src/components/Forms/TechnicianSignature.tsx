@@ -1,6 +1,7 @@
-import React, { useState, useRef } from 'react';
-import { RotateCcw, Save, User, Phone } from 'lucide-react';
+import React, { useRef, useState, useEffect } from 'react';
+import { Trash2, Check } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 interface TechnicianSignatureProps {
   data: any;
@@ -11,71 +12,168 @@ export function TechnicianSignature({ data, onUpdate }: TechnicianSignatureProps
   const { user } = useAuth();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [hasSignature, setHasSignature] = useState(!!data.tech_signature);
+  const [hasSignature, setHasSignature] = useState(false);
+  const [signatureLoaded, setSignatureLoaded] = useState(false);
 
-  const getCoordinates = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
+  // Auto-fill technician details and load signature from profile
+  useEffect(() => {
+    if (user) {
+      // Auto-fill name and mobile
+      onUpdate({
+        tech_engineer: user.full_name,
+        tech_mobile: user.mobile || '',
+        technician_id: user.id
+      });
 
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    if ('touches' in e) {
-      // Touch event
-      const touch = e.touches[0] || e.changedTouches[0];
-      return {
-        x: (touch.clientX - rect.left) * scaleX,
-        y: (touch.clientY - rect.top) * scaleY
+      // Fetch signature directly from database
+      const fetchSignature = async () => {
+        console.log('🔍 Fetching signature from database for user:', user.id);
+        const { data: userData, error } = await supabase
+          .from('users')
+          .select('signature')
+          .eq('id', user.id)
+          .single();
+        
+        if (error) {
+          console.error('❌ Error fetching signature from database:', error);
+          return;
+        }
+        
+        console.log('📊 Database signature query result:', userData);
+        const userSignature = userData?.signature || (user as any).signature;
+        
+        if (userSignature && !data.tech_signature) {
+          console.log('✅ Signature found! Length:', userSignature.length);
+          console.log('📝 Loading signature after delay...');
+          
+          // Wait for canvas to be mounted and ready
+          setTimeout(() => {
+            loadSignatureFromProfile(userSignature);
+          }, 200);
+        } else if (data.tech_signature) {
+          console.log('ℹ️ Using signature from draft/report data');
+        } else {
+          console.log('ℹ️ No signature found');
+        }
       };
-    } else {
-      // Mouse event
-      return {
-        x: (e.clientX - rect.left) * scaleX,
-        y: (e.clientY - rect.top) * scaleY
-      };
+      
+      fetchSignature();
     }
+  }, [user]);
+
+  // Load saved signature if continuing draft
+  useEffect(() => {
+    if (data.tech_signature && canvasRef.current && !hasSignature) {
+      console.log('📝 Loading signature from draft...');
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const img = new Image();
+        img.onload = () => {
+          console.log('✅ Draft signature loaded, dimensions:', img.width, 'x', img.height);
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          
+          // Scale image to fit canvas
+          const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+          const x = (canvas.width - img.width * scale) / 2;
+          const y = (canvas.height - img.height * scale) / 2;
+          
+          ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+          console.log('✅ Draft signature displayed on canvas');
+          setHasSignature(true);
+          setSignatureLoaded(true);
+        };
+        img.onerror = (error) => {
+          console.error('❌ Error loading draft signature:', error);
+          console.log('Signature data:', data.tech_signature?.substring(0, 100));
+        };
+        img.src = data.tech_signature;
+      }
+    }
+  }, [data.tech_signature]);
+
+  const loadSignatureFromProfile = (signatureData: string) => {
+    const canvas = canvasRef.current;
+    if (!canvas) {
+      console.log('❌ Canvas not ready for signature loading');
+      return;
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      console.log('❌ Canvas context not available');
+      return;
+    }
+
+    console.log('📝 Loading signature from profile...');
+    console.log('Canvas size:', canvas.width, 'x', canvas.height);
+    console.log('Signature preview:', signatureData?.substring(0, 50) + '...');
+
+    const img = new Image();
+    img.onload = () => {
+      console.log('✅ Signature image loaded, size:', img.width, 'x', img.height);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Scale image to fit canvas while maintaining aspect ratio
+      const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+      const x = (canvas.width - img.width * scale) / 2;
+      const y = (canvas.height - img.height * scale) / 2;
+      
+      console.log('Drawing at position:', x, y, 'with scale:', scale);
+      ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+      console.log('✅ Signature displayed on canvas');
+      
+      setHasSignature(true);
+      setSignatureLoaded(true);
+      
+      // Save to form data
+      onUpdate({ tech_signature: signatureData });
+    };
+    img.onerror = (error) => {
+      console.error('❌ Error loading signature image:', error);
+      console.log('Signature data:', signatureData?.substring(0, 100));
+    };
+    
+    // Set the image source
+    img.src = signatureData;
   };
 
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
+  // Canvas drawing functions
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const { x, y } = getCoordinates(e);
+    const rect = canvas.getBoundingClientRect();
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    ctx.beginPath();
-    ctx.moveTo(x, y);
     setIsDrawing(true);
+    ctx.beginPath();
+    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
   };
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
+  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const { x, y } = getCoordinates(e);
+    const rect = canvas.getBoundingClientRect();
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    ctx.lineTo(x, y);
+    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.stroke();
   };
 
-  const stopDrawing = (e?: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (e) e.preventDefault();
-    if (isDrawing) {
-      const canvas = canvasRef.current;
-      const ctx = canvas?.getContext('2d');
-      if (ctx) {
-        ctx.closePath();
-      }
+  const stopDrawing = () => {
       setIsDrawing(false);
-    }
+    setHasSignature(true);
+    setSignatureLoaded(false); // Mark as custom drawn
   };
 
   const clearSignature = () => {
@@ -87,6 +185,7 @@ export function TechnicianSignature({ data, onUpdate }: TechnicianSignatureProps
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     setHasSignature(false);
+    setSignatureLoaded(false);
     onUpdate({ tech_signature: null });
   };
 
@@ -95,220 +194,168 @@ export function TechnicianSignature({ data, onUpdate }: TechnicianSignatureProps
     if (!canvas) return;
 
     const signatureData = canvas.toDataURL('image/png');
-    setHasSignature(true);
-    onUpdate({ 
-      tech_signature: signatureData,
-      tech_engineer: user?.full_name || '',
-      tech_mobile: user?.mobile || ''
-    });
+    onUpdate({ tech_signature: signatureData });
+    alert('Signature saved!');
   };
 
-  // Initialize canvas
-  React.useEffect(() => {
+  // Touch events for mobile
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    const rect = canvas.getBoundingClientRect();
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set canvas size with device pixel ratio for crisp lines
+    const touch = e.touches[0];
+    setIsDrawing(true);
+    ctx.beginPath();
+    ctx.moveTo(touch.clientX - rect.left, touch.clientY - rect.top);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    if (!isDrawing) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
     const rect = canvas.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-    
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    
-    ctx.scale(dpr, dpr);
-    
-    // Set drawing properties for smooth lines
-    ctx.strokeStyle = '#1f2937';
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const touch = e.touches[0];
+    ctx.lineTo(touch.clientX - rect.left, touch.clientY - rect.top);
+    ctx.strokeStyle = '#000';
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.globalCompositeOperation = 'source-over';
+    ctx.stroke();
+  };
 
-    // Smooth out the drawing
-    ctx.imageSmoothingEnabled = true;
-
-    // Load existing signature if available
-    if (data.tech_signature) {
-      const img = new Image();
-      img.onload = () => {
-        ctx.drawImage(img, 0, 0, rect.width, rect.height);
+  const handleTouchEnd = () => {
+    setIsDrawing(false);
         setHasSignature(true);
+    setSignatureLoaded(false);
       };
-      img.src = data.tech_signature;
-    }
-  }, [data.tech_signature]);
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-semibold text-gray-900">Technician Signature</h2>
-      
-      {/* Technician Information */}
-      <div className="bg-gray-50 rounded-lg p-4">
-        <h3 className="text-lg font-medium text-gray-900 mb-3">Technician Details</h3>
-        <p className="text-sm text-gray-600 mb-4">
-          Your name and mobile number are automatically populated from your profile and cannot be edited.
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <h2 className="text-xl font-semibold text-gray-900">Step 6: Technician Signature</h2>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Engineer Name - Auto-filled, Read-only */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Technician Name *
+            Engineer Name * <span className="text-green-600 text-xs">(Auto-filled from profile)</span>
             </label>
-            <div className="flex items-center">
-              <User className="w-5 h-5 text-gray-400 mr-2" />
               <input
                 type="text"
                 value={data.tech_engineer || user?.full_name || ''}
-                disabled
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-700 cursor-not-allowed"
-                placeholder="Technician name"
+            readOnly
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-700 cursor-not-allowed"
                 required
               />
-            </div>
           </div>
 
+        {/* Mobile Number - Auto-filled */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Mobile Number *
+            Mobile Number <span className="text-green-600 text-xs">(Auto-filled from profile)</span>
             </label>
-            <div className="flex items-center">
-              <Phone className="w-5 h-5 text-gray-400 mr-2" />
               <input
-                type="tel"
+            type="text"
                 value={data.tech_mobile || user?.mobile || ''}
-                disabled
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-700 cursor-not-allowed"
-                placeholder="Mobile number"
-                pattern="[0-9]{10}"
-                required
-              />
-            </div>
-          </div>
+            readOnly
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-700 cursor-not-allowed"
+          />
         </div>
       </div>
 
-      {/* Digital Signature */}
-      <div className="border border-gray-300 rounded-lg p-4">
-        <h3 className="text-lg font-medium text-gray-900 mb-3">Digital Signature *</h3>
-        <p className="text-sm text-gray-600 mb-4">
-          Please sign below to confirm the completion of service work. This signature will be saved with your report.
-        </p>
+      {/* Signature Canvas */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Technician Signature * 
+          {signatureLoaded && (
+            <span className="text-green-600 text-xs ml-2">(Auto-loaded from profile)</span>
+          )}
+        </label>
         
-        <div className="bg-white border-2 border-dashed border-gray-300 rounded-lg p-4">
+        <div className="border-2 border-gray-300 rounded-lg p-4 bg-white">
           <canvas
             ref={canvasRef}
+            width={600}
+            height={200}
             onMouseDown={startDrawing}
             onMouseMove={draw}
             onMouseUp={stopDrawing}
             onMouseLeave={stopDrawing}
-            onTouchStart={startDrawing}
-            onTouchMove={draw}
-            onTouchEnd={stopDrawing}
-            onTouchCancel={stopDrawing}
-            className="w-full h-48 border border-gray-200 rounded cursor-crosshair touch-none"
-            style={{ 
-              touchAction: 'none',
-              width: '100%',
-              height: '192px'
-            }}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            className="w-full border border-gray-200 rounded cursor-crosshair touch-none"
+            style={{ touchAction: 'none' }}
           />
           
-          <div className="mt-2 text-center">
-            <p className="text-xs text-gray-500">
-              Click and drag to sign • Touch and drag on mobile devices
-            </p>
-          </div>
-        </div>
-
-        <div className="flex justify-between mt-4">
+          <div className="flex justify-between items-center mt-4">
+            <div className="flex space-x-2">
           <button
             type="button"
             onClick={clearSignature}
-            className="flex items-center px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"
+                className="flex items-center px-3 py-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100"
           >
-            <RotateCcw className="w-4 h-4 mr-2" />
+                <Trash2 className="w-4 h-4 mr-1" />
             Clear
           </button>
 
           <button
             type="button"
             onClick={saveSignature}
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                disabled={!hasSignature}
+                className="flex items-center px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Save className="w-4 h-4 mr-2" />
+                <Check className="w-4 h-4 mr-1" />
             Save Signature
           </button>
         </div>
 
         {hasSignature && (
-          <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-            <div className="flex items-center text-green-700">
-              <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              Signature saved successfully
-            </div>
+              <span className="text-green-600 text-sm font-medium flex items-center">
+                <Check className="w-4 h-4 mr-1" />
+                Signature {signatureLoaded ? 'loaded' : 'captured'}
+              </span>
+            )}
           </div>
+        </div>
+
+        {!hasSignature && (
+          <p className="text-sm text-orange-600 mt-2">
+            ⚠️ Please sign above or your profile signature will be used automatically
+          </p>
         )}
       </div>
 
-      {/* Important Notes */}
-      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-        <h4 className="text-sm font-medium text-yellow-900 mb-2">Important Notes</h4>
-        <ul className="text-sm text-yellow-700 space-y-1">
-          <li>• Your signature confirms the completion and accuracy of the service work</li>
-          <li>• After submission, this report will be sent to your Team Leader for review</li>
-          <li>• Your Team Leader will add their signature during the approval process</li>
-          <li>• Ensure all contact information is accurate for future reference</li>
-          <li>• Once submitted, you cannot modify the signature</li>
+      {/* Info Box */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <h4 className="text-sm font-medium text-blue-900 mb-2">ℹ️ About Signature:</h4>
+        <ul className="text-sm text-blue-700 space-y-1">
+          <li>• Your signature is auto-loaded from your profile</li>
+          <li>• You can draw a new signature if needed (temporary for this report only)</li>
+          <li>• To permanently update your signature, go to your Profile settings</li>
+          <li>• Use mouse or touch to draw your signature</li>
         </ul>
       </div>
 
-      {/* Team Leader Signature Section (Read-only for technicians) */}
-      <div className="border border-gray-300 rounded-lg p-4 bg-gray-50">
-        <h3 className="text-lg font-medium text-gray-900 mb-3">Team Leader Signature</h3>
-        <p className="text-sm text-gray-600 mb-4">
-          This section will be completed by your Team Leader during the approval process.
-        </p>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Team Leader Name
-            </label>
-            <input
-              type="text"
-              value=""
-              disabled
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500"
-              placeholder="Will be filled during approval"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Team Leader Mobile
-            </label>
-            <input
-              type="tel"
-              value=""
-              disabled
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500"
-              placeholder="Will be filled during approval"
-            />
-          </div>
-        </div>
-
-        <div className="mt-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Digital Signature
-          </label>
-          <div className="w-full h-32 border border-gray-200 rounded-lg bg-gray-100 flex items-center justify-center">
-            <p className="text-gray-500 text-sm">Team Leader will sign during approval</p>
-          </div>
-        </div>
+      {/* Workflow Info */}
+      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+        <h4 className="text-sm font-medium text-green-900 mb-2">📋 Signature Workflow:</h4>
+        <ul className="text-sm text-green-700 space-y-1">
+          <li>• <strong>Step 1:</strong> You (Technician) sign the report before submission</li>
+          <li>• <strong>Step 2:</strong> Report is sent to your Team Leader for approval</li>
+          <li>• <strong>Step 3:</strong> Team Leader reviews, signs, and approves/rejects</li>
+          <li>• <strong>Note:</strong> Team Leader signature will be added during approval process</li>
+        </ul>
       </div>
     </div>
   );

@@ -67,12 +67,14 @@ export function ReportsManagement() {
   const fetchReports = async () => {
     try {
       setLoading(true);
+      // Exclude drafts - only show submitted/approved/rejected reports
       const { data, error } = await supabase
         .from('service_reports')
         .select(`
           *,
           technician:users!service_reports_technician_id_fkey(full_name, employee_id, team_leader_id, manager_id)
         `)
+        .neq('status', 'draft') // Exclude drafts
         .order('updated_at', { ascending: false });
 
       if (error) throw error;

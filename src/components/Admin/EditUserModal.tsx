@@ -9,6 +9,18 @@ interface EditUserModalProps {
   user: User | null;
 }
 
+interface Project {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
+
+interface Department {
+  id: string;
+  name: string;
+  is_active: boolean;
+}
+
 export function EditUserModal({ isOpen, onClose, onSuccess, user }: EditUserModalProps) {
   const [formData, setFormData] = useState({
     full_name: '',
@@ -16,7 +28,8 @@ export function EditUserModal({ isOpen, onClose, onSuccess, user }: EditUserModa
     employee_id: '',
     mobile: '',
     designation: '',
-    department: '',
+    department_id: '',
+    project_id: '',
     zone: '',
     role: 'technician' as UserRole,
     username: '',
@@ -28,6 +41,8 @@ export function EditUserModal({ isOpen, onClose, onSuccess, user }: EditUserModa
   const [error, setError] = useState('');
   const [teamLeaders, setTeamLeaders] = useState<User[]>([]);
   const [managers, setManagers] = useState<User[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
 
   useEffect(() => {
     if (user) {
@@ -37,7 +52,8 @@ export function EditUserModal({ isOpen, onClose, onSuccess, user }: EditUserModa
         employee_id: user.employee_id || '',
         mobile: user.mobile || '',
         designation: user.designation || '',
-        department: user.department || '',
+        department_id: (user as any).department_id || '',
+        project_id: (user as any).project_id || '',
         zone: user.zone || '',
         role: user.role || 'technician',
         username: user.username || '',
@@ -52,6 +68,8 @@ export function EditUserModal({ isOpen, onClose, onSuccess, user }: EditUserModa
     if (isOpen) {
       fetchTeamLeaders();
       fetchManagers();
+      fetchProjects();
+      fetchDepartments();
     }
   }, [isOpen]);
 
@@ -87,6 +105,36 @@ export function EditUserModal({ isOpen, onClose, onSuccess, user }: EditUserModa
     }
   };
 
+  const fetchProjects = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('id, name, is_active')
+        .eq('is_active', true)
+        .order('name');
+
+      if (error) throw error;
+      setProjects(data || []);
+    } catch (error) {
+      console.error('Error fetching projects:', error);
+    }
+  };
+
+  const fetchDepartments = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('departments')
+        .select('id, name, is_active')
+        .eq('is_active', true)
+        .order('name');
+
+      if (error) throw error;
+      setDepartments(data || []);
+    } catch (error) {
+      console.error('Error fetching departments:', error);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -116,24 +164,46 @@ export function EditUserModal({ isOpen, onClose, onSuccess, user }: EditUserModa
         finalManagerId = teamLeaderData.manager_id;
       }
 
+      // First, get department name if department_id is provided
+      let departmentName = null;
+      if (formData.department_id && formData.role !== 'manager') {
+        const { data: deptData } = await supabase
+          .from('departments')
+          .select('name')
+          .eq('id', formData.department_id)
+          .single();
+        
+        departmentName = deptData?.name || null;
+      }
+
       // Update user profile
+      const updateData: any = {
+        full_name: formData.full_name,
+        email: formData.email,
+        employee_id: formData.employee_id,
+        mobile: formData.mobile,
+        designation: formData.designation,
+        project_id: formData.project_id || null,
+        zone: formData.zone,
+        role: formData.role,
+        username: formData.username,
+        date_of_birth: formData.date_of_birth,
+        team_leader_id: formData.team_leader_id || null,
+        manager_id: finalManagerId || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      // Update both department and department_id for non-managers
+      if (formData.role !== 'manager') {
+        updateData.department_id = formData.department_id || null;
+        updateData.department = departmentName; // Also update the old text column
+      }
+
+      console.log('Updating user with data:', updateData);
+
       const { error: updateError } = await supabase
         .from('users')
-        .update({
-          full_name: formData.full_name,
-          email: formData.email,
-          employee_id: formData.employee_id,
-          mobile: formData.mobile,
-          designation: formData.designation,
-          department: formData.department,
-          zone: formData.zone,
-          role: formData.role,
-          username: formData.username,
-          date_of_birth: formData.date_of_birth,
-          team_leader_id: formData.team_leader_id || null,
-          manager_id: finalManagerId || null,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('id', user.id);
 
       if (updateError) throw updateError;
@@ -177,7 +247,8 @@ export function EditUserModal({ isOpen, onClose, onSuccess, user }: EditUserModa
       employee_id: '',
       mobile: '',
       designation: '',
-      department: '',
+      department_id: '',
+      project_id: '',
       zone: '',
       role: 'technician',
       username: '',
@@ -326,15 +397,44 @@ export function EditUserModal({ isOpen, onClose, onSuccess, user }: EditUserModa
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Department
+                Department {formData.role === 'manager' && <span className="text-xs text-gray-500">(Managed in General Settings)</span>}
               </label>
-              <input
-                type="text"
-                value={formData.department}
-                onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+              <select
+                value={formData.department_id}
+                onChange={(e) => setFormData({ ...formData, department_id: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                disabled={formData.role === 'manager'}
+              >
+                <option value="">Select Department (Optional)</option>
+                {departments.map((dept) => (
+                  <option key={dept.id} value={dept.id}>
+                    {dept.name}
+                  </option>
+                ))}
+              </select>
+              {formData.role === 'manager' && (
+                <p className="text-xs text-blue-600 mt-1">
+                  Manager departments are assigned in General Settings → Manager Departments
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Project
+              </label>
+              <select
+                value={formData.project_id}
+                onChange={(e) => setFormData({ ...formData, project_id: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Enter department"
-              />
+              >
+                <option value="">Select Project (Optional)</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 

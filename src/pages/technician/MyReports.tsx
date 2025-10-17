@@ -22,11 +22,13 @@ export function MyReports() {
     if (!user) return;
 
     try {
+      // Exclude drafts - only show submitted, approved, rejected reports
       const { data, error } = await supabase
         .from('service_reports')
         .select('*')
         .eq('technician_id', user.id)
-        .order('created_at', { ascending: false });
+        .neq('status', 'draft') // Exclude drafts
+        .order('created_at', { ascending: false});
 
       if (error) throw error;
       setReports(data || []);

@@ -4,19 +4,22 @@ import { AuthProvider } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { Layout } from './components/Layout/Layout';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { RequireDepartmentSelection } from './components/RequireDepartmentSelection';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
-import { UserManagement } from './pages/admin/UserManagement';
+import { UserManagementHierarchical } from './pages/admin/UserManagementHierarchical';
 import { AdminReportView } from './pages/admin/AdminReportView';
 import { ReportsManagement } from './pages/admin/ReportsManagement';
 import { LocationView } from './pages/technician/LocationView';
 import { ReportView } from './pages/technician/ReportView';
 import { LocationManagement } from './pages/admin/LocationManagement';
 import { AuditLogs } from './pages/admin/AuditLogs';
+import { GeneralSettings } from './pages/admin/GeneralSettings';
 import { SystemSettings } from './pages/admin/SystemSettings';
 import { ManagerDashboard } from './pages/manager/ManagerDashboard';
-import { HierarchicalTeamManagement } from './pages/manager/HierarchicalTeamManagement';
+import { DepartmentSelection } from './pages/manager/DepartmentSelection';
+import { TeamManagementNew } from './pages/manager/TeamManagementNew';
 import { ReportsOverview } from './pages/manager/ReportsOverview';
 import { ManagerReportView } from './pages/manager/ManagerReportView';
 import { ManagerLocationManagement } from './pages/manager/LocationManagement';
@@ -29,6 +32,7 @@ import { TeamMembers } from './pages/team-leader/TeamMembers';
 import { TechnicianDashboard } from './pages/technician/TechnicianDashboard';
 import { EnhancedNewReport } from './pages/technician/EnhancedNewReport';
 import { MyReports } from './pages/technician/MyReports';
+import { Drafts } from './pages/technician/Drafts';
 import { UnifiedReportView } from './pages/UnifiedReportView';
 import { useAuth } from './contexts/AuthContext';
 
@@ -113,7 +117,7 @@ function App() {
             <Route path="/admin/users" element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <Layout>
-                  <UserManagement />
+                  <UserManagementHierarchical />
                 </Layout>
               </ProtectedRoute>
             } />
@@ -145,6 +149,13 @@ function App() {
                 </Layout>
               </ProtectedRoute>
             } />
+            <Route path="/admin/general-settings" element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <Layout>
+                  <GeneralSettings />
+                </Layout>
+              </ProtectedRoute>
+            } />
             <Route path="/admin/settings" element={
               <ProtectedRoute allowedRoles={['admin']}>
                 <Layout>
@@ -154,46 +165,63 @@ function App() {
             } />
 
             {/* Manager Routes */}
+            <Route path="/manager/select-department" element={
+              <ProtectedRoute allowedRoles={['manager']}>
+                <DepartmentSelection />
+              </ProtectedRoute>
+            } />
             <Route path="/manager" element={
               <ProtectedRoute allowedRoles={['manager']}>
-                <Layout>
-                  <ManagerDashboard />
-                </Layout>
+                <RequireDepartmentSelection>
+                  <Layout>
+                    <ManagerDashboard />
+                  </Layout>
+                </RequireDepartmentSelection>
               </ProtectedRoute>
             } />
             <Route path="/manager/team" element={
               <ProtectedRoute allowedRoles={['manager']}>
-                <Layout>
-                  <HierarchicalTeamManagement />
-                </Layout>
+                <RequireDepartmentSelection>
+                  <Layout>
+                    <TeamManagementNew />
+                  </Layout>
+                </RequireDepartmentSelection>
               </ProtectedRoute>
             } />
             <Route path="/manager/reports" element={
               <ProtectedRoute allowedRoles={['manager']}>
-                <Layout>
-                  <ReportsOverview />
-                </Layout>
+                <RequireDepartmentSelection>
+                  <Layout>
+                    <ReportsOverview />
+                  </Layout>
+                </RequireDepartmentSelection>
               </ProtectedRoute>
             } />
             <Route path="/manager/report-view/:reportId" element={
               <ProtectedRoute allowedRoles={['manager']}>
-                <Layout>
-                  <UnifiedReportView />
-                </Layout>
+                <RequireDepartmentSelection>
+                  <Layout>
+                    <UnifiedReportView />
+                  </Layout>
+                </RequireDepartmentSelection>
               </ProtectedRoute>
             } />
             <Route path="/manager/locations" element={
               <ProtectedRoute allowedRoles={['manager']}>
-                <Layout>
-                  <ManagerLocationManagement />
-                </Layout>
+                <RequireDepartmentSelection>
+                  <Layout>
+                    <ManagerLocationManagement />
+                  </Layout>
+                </RequireDepartmentSelection>
               </ProtectedRoute>
             } />
             <Route path="/manager/analytics" element={
               <ProtectedRoute allowedRoles={['manager']}>
-                <Layout>
-                  <Analytics />
-                </Layout>
+                <RequireDepartmentSelection>
+                  <Layout>
+                    <Analytics />
+                  </Layout>
+                </RequireDepartmentSelection>
               </ProtectedRoute>
             } />
 
@@ -260,6 +288,13 @@ function App() {
               <ProtectedRoute allowedRoles={['technician', 'technical_executive']}>
                 <Layout>
                   <MyReports />
+                </Layout>
+              </ProtectedRoute>
+            } />
+            <Route path="/technician/drafts" element={
+              <ProtectedRoute allowedRoles={['technician', 'technical_executive']}>
+                <Layout>
+                  <Drafts />
                 </Layout>
               </ProtectedRoute>
             } />

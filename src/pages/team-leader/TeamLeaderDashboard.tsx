@@ -101,6 +101,7 @@ export function TeamLeaderDashboard() {
           users!technician_id(full_name)
         `)
         .in('technician_id', teamMemberIds)
+        .neq('status', 'draft') // Exclude drafts
         .or('approval_status.is.null,approval_status.eq.pending')
         .order('created_at', { ascending: false });
 

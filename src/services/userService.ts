@@ -201,11 +201,12 @@ export const userService = {
 
       const teamMemberIds = teamMembers.map(member => member.id);
 
-      // Then get reports for those team members
+      // Then get reports for those team members (exclude drafts)
       const { data, error } = await supabase
         .from('service_reports')
         .select('*')
         .in('technician_id', teamMemberIds)
+        .neq('status', 'draft') // Exclude drafts from manager view
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -233,11 +234,12 @@ export const userService = {
 
       const teamMemberIds = teamMembers.map(member => member.id);
 
-      // Then get reports for those team members
+      // Then get reports for those team members (exclude drafts)
       const { data, error } = await supabase
         .from('service_reports')
         .select('*')
         .in('technician_id', teamMemberIds)
+        .neq('status', 'draft') // Exclude drafts from team leader view
         .order('created_at', { ascending: false });
 
       if (error) {

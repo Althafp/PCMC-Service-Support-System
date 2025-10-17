@@ -170,6 +170,7 @@ export function EnhancedReportApproval() {
 
       const updateData: any = {
         approval_status: action,
+        status: action === 'approve' ? 'approved' : 'rejected',
         tl_signature: signatureData,
         tl_name: user.full_name,
         tl_mobile: user.mobile,
@@ -181,6 +182,20 @@ export function EnhancedReportApproval() {
         updateData.rejection_remarks = rejectionRemarks;
       } else {
         updateData.approval_notes = approvalNotes;
+        
+        // Get sequential complaint number for approved reports
+        const { data: sequentialNumber, error: seqError } = await supabase
+          .rpc('get_next_complaint_number');
+        
+        if (seqError) {
+          console.error('Error getting sequential number:', seqError);
+          alert('Error assigning complaint number. Please ensure the sequential numbering system is set up. Check setup-sequential-numbering.sql');
+          throw seqError;
+        }
+        
+        // Update complaint number to sequential format
+        updateData.complaint_no = sequentialNumber;
+        console.log('Assigned sequential complaint number:', sequentialNumber);
       }
 
       const { error } = await supabase
@@ -196,13 +211,20 @@ export function EnhancedReportApproval() {
         action: action.toUpperCase(),
         table_name: 'service_reports',
         record_id: reportId,
-        old_data: { approval_status: report.approval_status },
+        old_data: { 
+          approval_status: report.approval_status,
+          complaint_no: report.complaint_no 
+        },
         new_data: updateData,
         ip_address: 'N/A',
         user_agent: navigator.userAgent
       });
 
-      alert(`Report ${action}d successfully!`);
+      const successMessage = action === 'approve' 
+        ? `Report approved successfully!\n\nSequential Complaint Number: ${updateData.complaint_no}\n\nThe report has been assigned an official complaint number.`
+        : `Report rejected successfully!`;
+      
+      alert(successMessage);
       navigate('/team-leader/approvals');
     } catch (error) {
       console.error(`Error ${action} report:`, error);
@@ -212,16 +234,22 @@ export function EnhancedReportApproval() {
     }
   };
 
-  // Initialize canvas
+  // Initialize canvas and load team leader signature from profile
   React.useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      console.log('❌ Canvas not ready');
+      return;
+    }
 
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      console.log('❌ Context not available');
+      return;
+    }
 
     // Set canvas size
-    canvas.width = 400;
+    canvas.width = 600;
     canvas.height = 200;
 
     // Set drawing properties
@@ -230,16 +258,83 @@ export function EnhancedReportApproval() {
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // Load existing signature if available
-    if (report?.tl_signature) {
-      const img = new Image();
-      img.onload = () => {
-        ctx.drawImage(img, 0, 0);
-        setHasSignature(true);
+    console.log('🎨 Canvas initialized:', canvas.width, 'x', canvas.height);
+
+    // Load signature from team leader's profile (auto-load)
+    if (user && !hasSignature) {
+      // Fetch signature directly from database
+      const fetchSignature = async () => {
+        console.log('🔍 Fetching TL signature from database for user:', user.id);
+        const { data: userData, error } = await supabase
+          .from('users')
+          .select('signature')
+          .eq('id', user.id)
+          .single();
+        
+        if (error) {
+          console.error('❌ Error fetching TL signature:', error);
+          return;
+        }
+        
+        console.log('📊 TL signature query result:', userData);
+        const userSignature = userData?.signature || (user as any).signature;
+        
+        if (userSignature) {
+          console.log('✅ TL Signature found! Length:', userSignature.length);
+          console.log('Signature preview:', userSignature?.substring(0, 50) + '...');
+          
+          setTimeout(() => {
+            const img = new Image();
+            img.onload = () => {
+              console.log('✅ TL signature loaded, dimensions:', img.width, 'x', img.height);
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              
+              // Scale image to fit canvas
+              const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+              const x = (canvas.width - img.width * scale) / 2;
+              const y = (canvas.height - img.height * scale) / 2;
+              
+              console.log('Drawing TL signature at:', x, y, 'scale:', scale);
+              ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+              setHasSignature(true);
+              console.log('✅ Team leader signature displayed on canvas');
+            };
+            img.onerror = (error) => {
+              console.error('❌ Error loading team leader signature:', error);
+              console.log('Signature data:', userSignature?.substring(0, 100));
+            };
+            img.src = userSignature;
+          }, 200);
+        } else {
+          console.log('ℹ️ Team leader has no signature in database');
+        }
       };
-      img.src = report.tl_signature;
+      
+      fetchSignature();
     }
-  }, [report?.tl_signature]);
+    
+    // Or load existing signature if report already has one
+    if (report?.tl_signature && !hasSignature) {
+      console.log('📝 Loading existing TL signature from report...');
+      setTimeout(() => {
+        const img = new Image();
+        img.onload = () => {
+          console.log('✅ Report TL signature loaded');
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+          const x = (canvas.width - img.width * scale) / 2;
+          const y = (canvas.height - img.height * scale) / 2;
+          ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+          setHasSignature(true);
+          console.log('✅ Report TL signature displayed');
+        };
+        img.onerror = (error) => {
+          console.error('❌ Error loading report signature:', error);
+        };
+        img.src = report.tl_signature;
+      }, 200);
+    }
+  }, [user, report]);
 
   // Helper function to render equipment checklist
   const renderEquipmentChecklist = () => {

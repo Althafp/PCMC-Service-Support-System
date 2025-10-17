@@ -9,7 +9,8 @@ import {
   CheckSquare,
   BarChart3,
   UserCheck,
-  Shield
+  Shield,
+  Clock
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -20,6 +21,7 @@ const navigationItems = {
     { name: 'Reports Management', href: '/admin/reports', icon: FileText },
     { name: 'Location Management', href: '/admin/locations', icon: MapPin },
     { name: 'Audit Logs', href: '/admin/audit', icon: Shield },
+    { name: 'General Settings', href: '/admin/general-settings', icon: Settings },
     { name: 'System Settings', href: '/admin/settings', icon: Settings },
   ],
   manager: [
@@ -37,13 +39,15 @@ const navigationItems = {
   ],
   technical_executive: [
     { name: 'Dashboard', href: '/technician', icon: Home },
-    { name: 'Service Reports', href: '/technician/reports', icon: FileText },
+    { name: 'My Reports', href: '/technician/reports', icon: FileText },
+    { name: 'Drafts', href: '/technician/drafts', icon: Clock },
     { name: 'New Report', href: '/technician/new-report', icon: CheckSquare },
     { name: 'Locations', href: '/technician/locations', icon: MapPin },
   ],
   technician: [
     { name: 'Dashboard', href: '/technician', icon: Home },
     { name: 'My Reports', href: '/technician/reports', icon: FileText },
+    { name: 'Drafts', href: '/technician/drafts', icon: Clock },
     { name: 'New Report', href: '/technician/new-report', icon: CheckSquare },
     { name: 'Locations', href: '/technician/locations', icon: MapPin },
   ],

@@ -23,7 +23,19 @@ serve(async (req)=>{
     const requestData = await req.json();
     console.log('=== EDGE FUNCTION DEBUG ===');
     console.log('Request data received:', JSON.stringify(requestData, null, 2));
-    const { email, password, full_name, employee_id, mobile, designation, department, zone, role, date_of_birth, team_leader_id, manager_id, created_by } = requestData;
+    const { email, password, full_name, employee_id, mobile, designation, department_id, project_id, zone, role, date_of_birth, team_leader_id, manager_id, created_by } = requestData;
+    
+    // Get department name from department_id if provided
+    let departmentName = null;
+    if (department_id) {
+      const { data: deptData } = await supabaseAdmin
+        .from('departments')
+        .select('name')
+        .eq('id', department_id)
+        .single();
+      
+      departmentName = deptData?.name || null;
+    }
     // Debug: Log the extracted values
     console.log('Extracted values:');
     console.log('- team_leader_id:', team_leader_id, 'type:', typeof team_leader_id);
@@ -42,73 +54,14 @@ serve(async (req)=>{
         }
       });
     }
-    // Validate leader assignments
-    if ((role === 'technician' || role === 'technical_executive') && !team_leader_id) {
-      console.log('❌ Validation failed: Technical role needs team leader');
-      return new Response(JSON.stringify({
-        error: 'Team Leader is required for technical roles'
-      }), {
-        status: 400,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
-      });
-    }
-    if (role === 'team_leader' && !manager_id) {
-      console.log('❌ Validation failed: Team leader needs manager');
-      return new Response(JSON.stringify({
-        error: 'Manager is required for Team Leader role'
-      }), {
-        status: 400,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
-      });
-    }
-
-    // Auto-populate manager_id for technicians based on their team leader's manager
-    let finalManagerId = manager_id;
-    if ((role === 'technician' || role === 'technical_executive') && team_leader_id) {
-      console.log('Fetching team leader\'s manager for technician...');
-      const { data: teamLeaderData, error: tlError } = await supabaseAdmin
-        .from('users')
-        .select('manager_id')
-        .eq('id', team_leader_id)
-        .single();
-
-      if (tlError) {
-        console.error('❌ Error checking team leader:', tlError);
-        return new Response(JSON.stringify({
-          error: 'Invalid Team Leader selected'
-        }), {
-          status: 400,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json'
-          }
-        });
-      }
-
-      if (!teamLeaderData.manager_id) {
-        console.log('❌ Team leader does not have a manager assigned');
-        return new Response(JSON.stringify({
-          error: 'The selected Team Leader must have a Manager assigned. Please assign a Manager to the Team Leader first.'
-        }), {
-          status: 400,
-          headers: {
-            ...corsHeaders,
-            'Content-Type': 'application/json'
-          }
-        });
-      }
-      
-      // Auto-assign the team leader's manager to the technician
-      finalManagerId = teamLeaderData.manager_id;
-      console.log('✅ Auto-assigned manager ID:', finalManagerId, 'from team leader');
-    }
+    
+    // No validation for team leader assignment - it's optional for all roles
+    // Manager field is also optional (admin assigns directly)
+    
     console.log('✅ Validation passed');
+    
+    // Use the provided manager_id as-is (no auto-population)
+    let finalManagerId = manager_id;
     // Step 1: Create the auth user
     console.log('Step 1: Creating auth user...');
     const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
@@ -157,7 +110,9 @@ serve(async (req)=>{
       employee_id,
       mobile: mobile || null,
       designation: designation || null,
-      department: department || null,
+      department_id: department_id || null,
+      department: departmentName, // Also set the old text column
+      project_id: project_id || null,
       zone: zone || null,
       role,
       date_of_birth: date_of_birth || null,
